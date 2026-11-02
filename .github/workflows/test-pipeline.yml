@@ -1,5 +1,5 @@
 name: Pipeline test
-run-name: Pipeline test ${{ inputs.action }} ${{ inputs.version }}
+run-name: Pipeline test ${{ inputs.action }} ${{ inputs.version }} ${{ inputs.channel }}
 
 # Exercises the real release path with a fake game under PipelineTest/: game-CI upload (this job),
 # then "Publish game release" with game PipelineTest. Run with action=cleanup to delete PipelineTest/.
@@ -14,6 +14,11 @@ on:
         description: Version to upload, e.g. 0.0.1
         type: string
         default: 0.0.1
+      channel:
+        description: none = upload only; stable / nightly = sign and go live (nightly prunes the previous one)
+        type: choice
+        options: [none, stable, nightly]
+        default: none
 
 permissions:
   contents: read
@@ -60,6 +65,9 @@ jobs:
           build-path: ${{ runner.temp }}/build
           entrypoint: Fake Game.app
           role-arn: ${{ vars.AWS_ROLE_ARN }}
+          channel: ${{ inputs.channel != 'none' && inputs.channel || '' }}
+          signing-key: ${{ secrets.RHYTHMHUB_SIGNING_KEY }}
+          prune-previous: ${{ inputs.channel == 'nightly' }}
 
   upload-windows:
     if: inputs.action == 'upload'
@@ -81,6 +89,9 @@ jobs:
           build-path: ${{ runner.temp }}/build
           entrypoint: FakeGame.exe
           role-arn: ${{ vars.AWS_ROLE_ARN }}
+          channel: ${{ inputs.channel != 'none' && inputs.channel || '' }}
+          signing-key: ${{ secrets.RHYTHMHUB_SIGNING_KEY }}
+          prune-previous: ${{ inputs.channel == 'nightly' }}
 
   cleanup:
     if: inputs.action == 'cleanup'

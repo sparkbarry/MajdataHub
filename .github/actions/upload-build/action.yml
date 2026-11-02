@@ -1,8 +1,9 @@
 name: RhythmHub upload build
 description: >-
-  Describes a finished game build (for macOS: already signed and notarized) as an unsigned RhythmHub
-  release manifest and uploads the build, unpacked, to the release bucket. Publishing (signing and
-  switching the channel) is a separate, manual step: the "Publish game release" workflow in MajdataHub.
+  Describes a finished game build (for macOS: already signed and notarized, if it is going to be) as a
+  RhythmHub release manifest and uploads the build, unpacked, to the release bucket.
+  Without `channel` it stops there and the "Publish game release" workflow in MajdataHub makes it live.
+  With `channel` and `signing-key` it also signs the manifest and switches that channel to this version.
   The calling job needs `permissions: id-token: write`.
 
 inputs:
@@ -28,6 +29,26 @@ inputs:
   role-arn:
     description: IAM role to assume through GitHub OIDC (the AWS_ROLE_ARN variable).
     required: true
+  channel:
+    description: Make the build live on this channel (stable, nightly, ...). Empty = upload only.
+    required: false
+    default: ""
+  signing-key:
+    description: Base64 Ed25519 private key (secrets.RHYTHMHUB_SIGNING_KEY). Required with channel.
+    required: false
+    default: ""
+  key-id:
+    required: false
+    default: rhythmhub-2026
+  prune-previous:
+    description: >-
+      Delete the version this channel pointed at before, unless another channel still points at it.
+      Use for nightly so only the latest nightly build is kept.
+    required: false
+    default: "false"
+  cdn:
+    required: false
+    default: https://distrib.sparkbarry.com
   bucket:
     required: false
     default: sparkbarry-public
@@ -66,6 +87,7 @@ runs:
         role-session-name: rhythmhub-upload-${{ github.run_id }}
 
     - name: Upload to S3
+      id: upload
       shell: bash
       env:
         PREFIX: s3://${{ inputs.bucket }}/${{ inputs.game }}/${{ inputs.platform }}
@@ -73,20 +95,66 @@ runs:
         KEY: ${{ inputs.game }}/${{ inputs.platform }}/${{ inputs.version }}.json
         VERSION: ${{ inputs.version }}
         BUILD_PATH: ${{ inputs.build-path }}
+        CHANNEL: ${{ inputs.channel }}
       run: |
         set -euo pipefail
-        # Published versions are immutable; re-running an unpublished upload is fine.
+        # Published versions are immutable. With a channel, an already published version (for example the
+        # same commit built for a tag and for main) is reused: the channel is simply pointed at it.
         if aws s3api head-object --bucket "$BUCKET" --key "$KEY" >/dev/null 2>&1; then
-          echo "::error::$KEY is already published. Bump the version instead of overwriting a release."
-          exit 1
+          if [[ -z "$CHANNEL" ]]; then
+            echo "::error::$KEY is already published. Bump the version instead of overwriting a release."
+            exit 1
+          fi
+          echo "$KEY is already published; reusing it."
+          echo "already_published=true" >> "$GITHUB_OUTPUT"
+          exit 0
         fi
+        echo "already_published=false" >> "$GITHUB_OUTPUT"
         # Symlinks, permissions and empty directories travel in the manifest, not as S3 objects.
         aws s3 sync "$BUILD_PATH" "$PREFIX/$VERSION/" --no-follow-symlinks --only-show-errors \
           --cache-control "public, max-age=31536000, immutable"
         aws s3 cp "$RUNNER_TEMP/$VERSION.unsigned.json" "$PREFIX/$VERSION.unsigned.json" \
           --cache-control "no-cache" --content-type application/json --only-show-errors
-        {
-          echo "### Uploaded ${{ inputs.game }} ${{ inputs.platform }} $VERSION"
-          echo "Not live yet. To release it, run **Publish game release** in sparkbarry/MajdataHub with"
-          echo "game \`${{ inputs.game }}\`, platform \`${{ inputs.platform }}\`, version \`$VERSION\`."
-        } >> "$GITHUB_STEP_SUMMARY"
+        if [[ -z "$CHANNEL" ]]; then
+          {
+            echo "### Uploaded ${{ inputs.game }} ${{ inputs.platform }} $VERSION"
+            echo "Not live yet. To release it, run **Publish game release** in sparkbarry/MajdataHub with"
+            echo "game \`${{ inputs.game }}\`, platform \`${{ inputs.platform }}\`, version \`$VERSION\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: Sign and go live
+      if: inputs.channel != ''
+      shell: bash
+      env:
+        TOOL: ${{ github.action_path }}/../../../tools/RhythmHub.ReleaseTool
+        GO_LIVE: ${{ github.action_path }}/../../../tools/ci/go-live.sh
+        RHYTHMHUB_SIGNING_KEY: ${{ inputs.signing-key }}
+        KEY_ID: ${{ inputs.key-id }}
+        BUCKET: ${{ inputs.bucket }}
+        CDN: ${{ inputs.cdn }}
+        GAME: ${{ inputs.game }}
+        PLATFORM: ${{ inputs.platform }}
+        VERSION: ${{ inputs.version }}
+        CHANNEL: ${{ inputs.channel }}
+        BUILD_PATH: ${{ inputs.build-path }}
+        MANIFEST_ALREADY_PUBLISHED: ${{ steps.upload.outputs.already_published }}
+        PRUNE_PREVIOUS: ${{ inputs.prune-previous }}
+      run: |
+        set -euo pipefail
+        if [[ -z "$RHYTHMHUB_SIGNING_KEY" ]]; then
+          echo "::error::signing-key is required with channel (secrets.RHYTHMHUB_SIGNING_KEY)."
+          exit 1
+        fi
+        export DIR="$RUNNER_TEMP/feed/$GAME/$PLATFORM"
+        mkdir -p "$DIR"
+        if [[ "$MANIFEST_ALREADY_PUBLISHED" == "true" ]]; then
+          aws s3 cp "s3://$BUCKET/$GAME/$PLATFORM/$VERSION.json" "$DIR/$VERSION.json" --only-show-errors
+        else
+          cp "$RUNNER_TEMP/$VERSION.unsigned.json" "$DIR/"
+          # The files were just uploaded from here; checking them locally avoids downloading the build again.
+          ln -sfn "$(cd "$BUILD_PATH" && pwd)" "$DIR/$VERSION"
+        fi
+        dotnet run --project "$TOOL" -c Release -- publish --feed "$RUNNER_TEMP/feed" \
+          --game "$GAME" --platform "$PLATFORM" --version "$VERSION" --channel "$CHANNEL" --key-id "$KEY_ID"
+        bash "$GO_LIVE"
