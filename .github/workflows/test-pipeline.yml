@@ -1,0 +1,95 @@
+name: Pipeline test
+run-name: Pipeline test ${{ inputs.action }} ${{ inputs.version }}
+
+# Exercises the real release path with a fake game under PipelineTest/: game-CI upload (this job),
+# then "Publish game release" with game PipelineTest. Run with action=cleanup to delete PipelineTest/.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        type: choice
+        options: [upload, cleanup]
+        default: upload
+      version:
+        description: Version to upload, e.g. 0.0.1
+        type: string
+        default: 0.0.1
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GAME: PipelineTest
+
+jobs:
+  upload-macos:
+    if: inputs.action == 'upload'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      # Same shape as a Unity macOS player: Mach-O executable, a framework with Versions/Current
+      # symlinks, a path with spaces and non-ASCII characters, and an embedded code signature.
+      - name: Build signed fake app
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/build"
+          dotnet run --project tools/RhythmHub.ReleaseTool -- fake-game --platform MacOS --name "Fake Game" --out "$out" --label "${{ inputs.version }}"
+          app="$out/Fake Game.app"
+          fw="$app/Contents/Frameworks/Fake.framework"
+          cc -O2 -o "$app/Contents/MacOS/Fake Game" tools/fake-game/main.c
+          echo "" | cc -dynamiclib -o "$fw/Versions/A/Fake" -x c -
+          mkdir -p "$fw/Versions/A/Resources"
+          printf '<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>dev.rhythmhub.fake.framework</string><key>CFBundleExecutable</key><string>Fake</string><key>CFBundlePackageType</key><string>FMWK</string></dict></plist>' > "$fw/Versions/A/Resources/Info.plist"
+          ln -s Versions/Current/Fake "$fw/Fake"
+          ln -s Versions/Current/Resources "$fw/Resources"
+          printf '%s 音乐\n' "${{ inputs.version }}" > "$app/Contents/Resources/曲目 01.txt"
+          codesign -s - -f "$fw"
+          codesign -s - -f "$app"
+          codesign --verify --deep --strict "$app"
+      - uses: ./.github/actions/upload-build
+        with:
+          game: ${{ env.GAME }}
+          platform: MacOS
+          version: ${{ inputs.version }}
+          build-path: ${{ runner.temp }}/build
+          entrypoint: Fake Game.app
+          role-arn: ${{ vars.AWS_ROLE_ARN }}
+
+  upload-windows:
+    if: inputs.action == 'upload'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Build fake Windows player
+        run: dotnet run --project tools/RhythmHub.ReleaseTool -- fake-game --platform Windows --name FakeGame --out "$RUNNER_TEMP/build" --label "${{ inputs.version }}"
+      - uses: ./.github/actions/upload-build
+        with:
+          game: ${{ env.GAME }}
+          platform: Windows
+          version: ${{ inputs.version }}
+          build-path: ${{ runner.temp }}/build
+          entrypoint: FakeGame.exe
+          role-arn: ${{ vars.AWS_ROLE_ARN }}
+
+  cleanup:
+    if: inputs.action == 'cleanup'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ap-northeast-1
+          role-session-name: rhythmhub-test-cleanup-${{ github.run_id }}
+      - name: Delete PipelineTest/
+        run: aws s3 rm "s3://sparkbarry-public/$GAME/" --recursive --only-show-errors

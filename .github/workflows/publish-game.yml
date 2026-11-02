@@ -8,7 +8,7 @@ on:
     inputs:
       game:
         type: choice
-        options: [MajdataPlay, OurTaikoPlay]
+        options: [MajdataPlay, OurTaikoPlay, PipelineTest]
       platform:
         type: choice
         options: [Windows, MacOS]
