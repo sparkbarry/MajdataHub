@@ -4,7 +4,8 @@ RhythmHub: a Windows / macOS desktop launcher (C#, .NET 10, Avalonia 12) that in
 and rolls back Unity rhythm games (MajdataPlay, OurTaikoPlay). The games are built in their own repositories;
 this repository holds the launcher, the release tooling and the release pipeline.
 
-The repository was formerly MajdataHub (Tauri). That code is gone; ignore it in the git history before `a3840d7`.
+The repository was formerly MajdataHub (Tauri) and was renamed from `sparkbarry/MajdataHub` to `sparkbarry/RhythmHub`
+on 2026-11-02. The Tauri code is gone; ignore it in the git history before `a3840d7`.
 
 ## Read first
 

@@ -20,7 +20,7 @@
 | CI 角色 ARN | `arn:aws:iam::190779300206:role/rhythmhub-ci`（所有仓库的 Variable `AWS_ROLE_ARN`） |
 | 签名 keyId | `rhythmhub-2026`（公钥在 `src/RhythmHub.Launcher/Services/ReleaseKeys.cs`） |
 | 私钥文件 | 维护者本机 `~/.rhythmhub/rhythmhub-2026.key`；CI 中为 Secret `RHYTHMHUB_SIGNING_KEY` |
-| 上传 Action | `sparkbarry/MajdataHub/.github/actions/upload-build@main` |
+| 上传 Action | `sparkbarry/RhythmHub/.github/actions/upload-build@main` |
 | 上线脚本 | `tools/ci/go-live.sh` |
 | 发布工具 | `tools/RhythmHub.ReleaseTool`（`stage` / `publish` / `keygen` / `fake-game`） |
 | 预编译发布工具 | GitHub Release `release-tool`（`rhythmhub-release-linux-x64.tar.gz`、`-osx-arm64.tar.gz`），由 `.github/workflows/release-tool.yml` 自动更新 |
@@ -50,12 +50,12 @@
 |---|---|
 | S3 + CloudFront + 域名 + 费用告警 | ✅ 完成 |
 | CI 角色、各仓库 Variables / Secrets | ✅ 三个仓库都已配置（见 §3） |
-| MajdataHub 手动发布、回归测试工作流 | ✅ 已用 PipelineTest 在真实环境验证 |
+| RhythmHub 手动发布、回归测试工作流 | ✅ 已用 PipelineTest 在真实环境验证 |
 | OurTaikoPlay 自动发布 | ✅ 已合并（OurTaiko/OurTaikoPlay#49）。首个 nightly `1.0-400` 已自动上线；从 CDN 安装的 Mac 版与 GitHub Release 的 zip 逐文件一致（218 个文件） |
 | MajdataPlay 自动发布 | 🟡 已合并（TeamMajdata/MajdataPlay#375）。Windows nightly `2.1.0-6d68d84` 已上线；macOS 首次运行时自建 Mac 磁盘耗尽而失败（见 §7.1），缩减占用的修复在 #376，需先清理那台 Mac 的磁盘 |
 | 游戏 Mac 版苹果签名 / 公证 | ⏳ 未做（通过启动器安装不受 Gatekeeper 隔离影响） |
 | 启动器 Velopack 打包、自更新 | ✅ `v1.0.0` 已发布到 CDN 和 GitHub Release（见 §8）；CDN 与 GitHub 的 Mac 便携包一致，运行后自更新检查正常 |
-| 启动器 macOS 签名公证 | ⏳ 等 MajdataHub 配好 §8.3 的 Apple Secrets；未配置时 Mac 包不签名 |
+| 启动器 macOS 签名公证 | ⏳ 等 RhythmHub 配好 §8.3 的 Apple Secrets；未配置时 Mac 包不签名 |
 | 启动器 Windows 代码签名 | ⏳ 暂不做（安装时会有 SmartScreen 提示） |
 | 启动器内切换 stable / nightly 频道 | ✅ v1.0.1 起每个游戏可单独选「稳定版 / 每日构建」，保存在 `{安装根目录}/settings.json`；默认取 `games.json` 的 `channel` |
 | Windows 真机安装测试 | ⏳ 未做 |
@@ -68,7 +68,7 @@ flowchart LR
     B[Unity 构建] --> U["upload-build Action<br/>生成清单 / 上传 / 签名 / 切换频道"]
   end
   U -- GitHub OIDC 临时身份 --> S3[(S3 sparkbarry-public<br/>ap-northeast-1)]
-  M["MajdataHub<br/>Publish game release（手动）"] -- GitHub OIDC --> S3
+  M["RhythmHub<br/>Publish game release（手动）"] -- GitHub OIDC --> S3
   S3 -- OAC 私有读取 --> CF[CloudFront<br/>distrib.sparkbarry.com]
   CF --> L[RhythmHub 启动器]
 ```
@@ -119,7 +119,7 @@ CI 不保存任何长期 AWS 密钥。每次运行时，GitHub 签发一次性�
 
 | 仓库 | Subject 前缀 |
 |---|---|
-| sparkbarry/MajdataHub | `repo:sparkbarry@118162831/MajdataHub@973319129` |
+| sparkbarry/RhythmHub | `repo:sparkbarry@118162831/RhythmHub@973319129` |
 | TeamMajdata/MajdataPlay | `repo:TeamMajdata@210497401/MajdataPlay@763747540` |
 | OurTaiko/OurTaikoPlay | `repo:OurTaiko@252237704/OurTaikoPlay@1400725485` |
 
@@ -135,10 +135,10 @@ gh api repos/<owner>/<repo>/actions/oidc/customization/sub
 
 | 仓库 | 类型 | 名称 | 值 / 来源 | 用途 |
 |---|---|---|---|---|
-| sparkbarry/MajdataHub | Variable | `AWS_ROLE_ARN` | `arn:aws:iam::190779300206:role/rhythmhub-ci` | 发布工作流、测试工作流 |
-| sparkbarry/MajdataHub | Secret | `RHYTHMHUB_SIGNING_KEY` | 清单签名私钥 | 手动发布、测试工作流 |
-| sparkbarry/MajdataHub | Secret | `MACOS_CERTIFICATES_FILE_BASE64`、`MACOS_CERTIFICATES_PASSWORD` | Developer ID Application + Installer 证书（一个 .p12） | 启动器 Mac 版签名（§8.3） |
-| sparkbarry/MajdataHub | Secret | `APPSTORE_KEY_ID`、`APPSTORE_ISSUER_ID`、`APPSTORE_PRIVATE_KEY` | App Store Connect API 密钥 | 启动器 Mac 版公证（§8.3） |
+| sparkbarry/RhythmHub | Variable | `AWS_ROLE_ARN` | `arn:aws:iam::190779300206:role/rhythmhub-ci` | 发布工作流、测试工作流 |
+| sparkbarry/RhythmHub | Secret | `RHYTHMHUB_SIGNING_KEY` | 清单签名私钥 | 手动发布、测试工作流 |
+| sparkbarry/RhythmHub | Secret | `MACOS_CERTIFICATES_FILE_BASE64`、`MACOS_CERTIFICATES_PASSWORD` | Developer ID Application + Installer 证书（一个 .p12） | 启动器 Mac 版签名（§8.3） |
+| sparkbarry/RhythmHub | Secret | `APPSTORE_KEY_ID`、`APPSTORE_ISSUER_ID`、`APPSTORE_PRIVATE_KEY` | App Store Connect API 密钥 | 启动器 Mac 版公证（§8.3） |
 | OurTaiko/OurTaikoPlay | Variable | `AWS_ROLE_ARN` | 同上 | 上传构建 |
 | OurTaiko/OurTaikoPlay | Secret | `RHYTHMHUB_SIGNING_KEY` | 清单签名私钥 | 自动签名上线 |
 | TeamMajdata/MajdataPlay | Variable | `AWS_ROLE_ARN` | 同上 | 上传构建（CI 尚未接入） |
@@ -146,7 +146,7 @@ gh api repos/<owner>/<repo>/actions/oidc/customization/sub
 
 - `AWS_ROLE_ARN` 不是机密，放在 **Variables**，方便查看。
 - 签名私钥放在 **Secrets**。GitHub 存进去之后就无法再读出来。
-- MajdataHub 里还留着旧 Tauri 版的 `TAURI_SIGNING_*` 三个 Secret，RhythmHub 用不到，确认旧版不再发布后可以删除。
+- 本仓库里还留着旧 Tauri 版的 `TAURI_SIGNING_*` 三个 Secret，RhythmHub 用不到，确认旧版不再发布后可以删除。
 
 ### 3.1 设置方法
 
@@ -211,7 +211,7 @@ gh variable get AWS_ROLE_ARN --repo <owner>/<repo>
 版本号：OurTaikoPlay 是 `版本-提交数`（例如 `1.0-400`）；MajdataPlay 是 `bundleVersion-提交号前7位`（例如 `2.1.0-6d68d84`）。
 
 两个仓库都在 Windows / macOS 构建完成后调用
-`sparkbarry/MajdataHub/.github/actions/upload-build@main`，依次执行：
+`sparkbarry/RhythmHub/.github/actions/upload-build@main`，依次执行：
 
 0. 从 `release-tool` Release 下载预编译的 `rhythmhub-release`（没有对应平台的版本时，才回退到从源码构建，需要 .NET SDK），并在日志里打印 runner 的剩余磁盘空间。
 1. `rhythmhub-release stage`：根据构建目录生成清单（文件哈希、权限位、符号链接、空目录）。
@@ -222,9 +222,9 @@ gh variable get AWS_ROLE_ARN --repo <owner>/<repo>
 
 版本号使用游戏 CI 的 `display` 版本，例如 `1.2.3-1450`（`版本-提交数`）。同一个版本号已经发布过时直接复用，不会覆盖。
 
-### 4.3 手动发布 / 回滚（MajdataHub）
+### 4.3 手动发布 / 回滚（RhythmHub）
 
-在 GitHub 打开 **sparkbarry/MajdataHub → Actions → Publish game release → Run workflow**，选择游戏、平台、版本、频道：
+在 GitHub 打开 **sparkbarry/RhythmHub → Actions → Publish game release → Run workflow**，选择游戏、平台、版本、频道：
 
 - 版本**已上传但未签名**：从 S3 拉下文件逐个核对哈希，签名后上线。
 - 版本**已签名过**：只把频道指针重新指向它，这就是**服务端回滚**。注意 nightly 的旧版本会被自动清理，只能回滚到还在桶里的版本，`stable` 的历史版本都会保留。
@@ -232,14 +232,14 @@ gh variable get AWS_ROLE_ARN --repo <owner>/<repo>
 也可以用命令行触发：
 
 ```bash
-gh workflow run publish-game.yml --repo sparkbarry/MajdataHub -f game=OurTaikoPlay -f platform=Windows -f version=1.2.3-1450 -f channel=stable
+gh workflow run publish-game.yml --repo sparkbarry/RhythmHub -f game=OurTaikoPlay -f platform=Windows -f version=1.2.3-1450 -f channel=stable
 ```
 
 客户端只要发现频道版本与已安装版本不同就会提示更新，所以指回旧版本时玩家也会被“更新”到旧版本。
 
 ### 4.4 发布链路回归测试
 
-修改上传 Action、发布脚本或 AWS 配置后，在 MajdataHub 运行 **Actions → Pipeline test**：
+修改上传 Action、发布脚本或 AWS 配置后，在 RhythmHub 运行 **Actions → Pipeline test**：
 
 1. `action=upload`，`channel` 选 `stable` 或 `nightly`。它会在 GitHub 的 macOS 机器上生成带 Framework、符号链接、中文文件名并做 ad-hoc 签名的假游戏，以及一个假的 Windows 版，然后走真实的上传和上线流程，发布到 `PipelineTest/` 下。
 2. 需要时，用启动器代码从 `https://distrib.sparkbarry.com/PipelineTest/...` 安装验证。
@@ -297,7 +297,7 @@ gh variable set AWS_ROLE_ARN --repo SomeOrg/NewGame --body "arn:aws:iam::1907793
 gh secret set RHYTHMHUB_SIGNING_KEY --repo SomeOrg/NewGame < ~/.rhythmhub/rhythmhub-2026.key
 ```
 
-如果新游戏只想上传、由维护者在 MajdataHub 手动发布，则不需要第二条，签名私钥也就不会进入新仓库。
+如果新游戏只想上传、由维护者在 RhythmHub 手动发布，则不需要第二条，签名私钥也就不会进入新仓库。
 
 ### 5.4 游戏 CI：构建后调用 upload-build
 
@@ -316,7 +316,7 @@ gh secret set RHYTHMHUB_SIGNING_KEY --repo SomeOrg/NewGame < ~/.rhythmhub/rhythm
 3. 调用 Action：
 
    ```yaml
-   - uses: sparkbarry/MajdataHub/.github/actions/upload-build@main
+   - uses: sparkbarry/RhythmHub/.github/actions/upload-build@main
      with:
        game: NewGame
        platform: Windows              # 或 MacOS
@@ -331,7 +331,7 @@ gh secret set RHYTHMHUB_SIGNING_KEY --repo SomeOrg/NewGame < ~/.rhythmhub/rhythm
 
    可以直接参考 OurTaikoPlay `build.yml` 里的 **Prepare RhythmHub release** 和 **Publish to RhythmHub** 两个步骤，它们根据 `v*` 标签或 `main` 选择频道。
 
-### 5.5 MajdataHub：启动器和手动发布
+### 5.5 RhythmHub：启动器和手动发布
 
 1. 在 [games.json](../src/RhythmHub.Launcher/games.json) 加一项：
 
@@ -377,7 +377,7 @@ curl -sI https://distrib.sparkbarry.com/NewGame/Windows/stable.json | grep -i ca
 - **现象**：#375 合并后的第一次 `dev` 构建（run 41401868445）中，macOS 任务在 **Publish to RhythmHub** 这一步报 `No space left on device`，GitHub Runner 进程崩溃；同一台机器上的 Android 和 iOS 任务也一起失败。结果是这次推送没有上传 Google Play 和 TestFlight，也没有更新 GitHub nightly Release。Windows 的 RhythmHub nightly 正常上线。
 - **原因**：这台 Mac 的磁盘本来就接近满了。当时的上传 Action 又在上面安装了 .NET SDK（约 1 GB），还用 `ditto` 把 `.app` 完整复制了一份，把磁盘撑满。
 - **修复**：
-  - 上传 Action 改为下载约 33 MB 的预编译工具，不再安装 SDK（MajdataHub `6624e82`）。
+  - 上传 Action 改为下载约 33 MB 的预编译工具，不再安装 SDK（RhythmHub `6624e82`）。
   - MajdataPlay 改用 `cp -cpR` 克隆 `.app`（TeamMajdata/MajdataPlay#376）。
   - 需要人工清理那台 Mac 的磁盘。如果 `~/.dotnet` 只是那次运行装上的，可以直接删除。
 - **预防**：Action 现在会在日志里打印剩余空间。修改上传流程时遵守 §0.2 第 11 条。
@@ -386,7 +386,7 @@ curl -sI https://distrib.sparkbarry.com/NewGame/Windows/stable.json | grep -i ca
 
 | 现象 | 原因与处理 |
 |---|---|
-| CI 报 `Not authorized to perform sts:AssumeRoleWithWebIdentity` | 仓库的 subject 不在信任列表里，或者用了不带数字 ID 的旧格式。用 `gh api …/oidc/customization/sub` 核对，再按 §5.2 更新堆栈。还要确认 job 有 `id-token: write` 权限 |
+| CI 报 `Not authorized to perform sts:AssumeRoleWithWebIdentity` | 仓库的 subject 不在信任列表里，或者用了不带数字 ID 的旧格式。**改仓库名或组织名也会改变 subject**（里面带名字），改名后要更新堆栈参数。用 `gh api …/oidc/customization/sub` 核对，再按 §5.2 更新堆栈。还要确认 job 有 `id-token: write` 权限 |
 | CI 报 `already published. Bump the version` | 只上传模式（不带 `channel`）遇到了已发布过的版本号。已发布的版本不可覆盖，请换新版本号 |
 | `publish` 报 `Uploaded files do not match the manifest` | 上传和发布之间文件被改动，或上传不完整。重新运行游戏 CI 的上传 |
 | CDN 返回 403 | 文件不存在（桶策略只允许读取，不存在时统一返回 403）。核对路径大小写和空格编码 |
@@ -440,17 +440,17 @@ git tag v1.0.0 && git push origin v1.0.0
 3. 上传（.p12 用 base64，密码从提示输入，不进命令历史）：
 
    ```bash
-   base64 -i DeveloperID.p12 | gh secret set MACOS_CERTIFICATES_FILE_BASE64 --repo sparkbarry/MajdataHub
-   gh secret set MACOS_CERTIFICATES_PASSWORD --repo sparkbarry/MajdataHub
+   base64 -i DeveloperID.p12 | gh secret set MACOS_CERTIFICATES_FILE_BASE64 --repo sparkbarry/RhythmHub
+   gh secret set MACOS_CERTIFICATES_PASSWORD --repo sparkbarry/RhythmHub
    ```
 
 4. 公证用 App Store Connect API 密钥（[Users and Access → Integrations](https://appstoreconnect.apple.com/access/integrations/api)，
    角色 Developer 即可）。可以和 OurTaikoPlay 的 TestFlight 用同一把，名称也一样：
 
    ```bash
-   gh secret set APPSTORE_KEY_ID --repo sparkbarry/MajdataHub
-   gh secret set APPSTORE_ISSUER_ID --repo sparkbarry/MajdataHub
-   gh secret set APPSTORE_PRIVATE_KEY --repo sparkbarry/MajdataHub < AuthKey_XXXXXXXXXX.p8
+   gh secret set APPSTORE_KEY_ID --repo sparkbarry/RhythmHub
+   gh secret set APPSTORE_ISSUER_ID --repo sparkbarry/RhythmHub
+   gh secret set APPSTORE_PRIVATE_KEY --repo sparkbarry/RhythmHub < AuthKey_XXXXXXXXXX.p8
    ```
 
 工作流会建一个临时钥匙串，按名字前缀找出两个 Developer ID 身份，`vpk pack` 用它们签名 `.app` 和 `.pkg` 并提交公证，结束后删除钥匙串。

@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
   RhythmHub CI access to the release bucket via GitHub OIDC (no long-lived keys).
-  One role, shared by the game repositories and MajdataHub, with full access to the bucket only.
+  One role, shared by the game repositories and RhythmHub, with full access to the bucket only.
   See docs/update-protocol.md section 5.
 
 Parameters:
@@ -21,7 +21,7 @@ Parameters:
   #   gh api repos/<owner>/<name>/actions/oidc/customization/sub
   PublisherSubject:
     Type: String
-    Default: repo:sparkbarry@118162831/MajdataHub@973319129
+    Default: repo:sparkbarry@118162831/RhythmHub@973319129
   MajdataPlaySubject:
     Type: String
     Default: repo:TeamMajdata@210497401/MajdataPlay@763747540

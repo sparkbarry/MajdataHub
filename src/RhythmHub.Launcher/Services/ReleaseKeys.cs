@@ -12,7 +12,7 @@ internal static class ReleaseKeys
 
     private static readonly Dictionary<string, string> Production = new()
     {
-        // Private half: MajdataHub secret RHYTHMHUB_SIGNING_KEY (offline copy kept by the maintainer).
+        // Private half: RhythmHub secret RHYTHMHUB_SIGNING_KEY (offline copy kept by the maintainer).
         ["rhythmhub-2026"] = "6gDC1TutxgMXd0b4uoP1ZW1zHY1VLJpbCiVMdK7QYJc=",
     };
 
