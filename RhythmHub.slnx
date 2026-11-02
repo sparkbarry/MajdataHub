@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RhythmHub.Launcher/RhythmHub.Launcher.csproj" />
+    <Project Path="src/RhythmHub.Platform/RhythmHub.Platform.csproj" />
+    <Project Path="src/RhythmHub.Updater/RhythmHub.Updater.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RhythmHub.Updater.Tests/RhythmHub.Updater.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/RhythmHub.ReleaseTool/RhythmHub.ReleaseTool.csproj" />
+  </Folder>
+</Solution>

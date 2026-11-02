@@ -1,0 +1,82 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:RhythmHub.Launcher.ViewModels"
+        x:Class="RhythmHub.Launcher.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="RhythmHub"
+        Width="960" Height="600" MinWidth="720" MinHeight="460"
+        WindowStartupLocation="CenterScreen">
+  <Grid ColumnDefinitions="240,*" RowDefinitions="*,Auto">
+
+    <!-- Game list -->
+    <Border Grid.Column="0" Grid.RowSpan="2"
+            Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Text="RhythmHub" FontSize="20" FontWeight="SemiBold" Margin="20,24,20,16" />
+        <ListBox ItemsSource="{Binding Games}" SelectedItem="{Binding SelectedGame}" Background="Transparent" Margin="8,0">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:GameViewModel">
+              <Grid ColumnDefinitions="Auto,*" Margin="4,6">
+                <Border Width="36" Height="36" CornerRadius="8"
+                        Background="{DynamicResource SystemAccentColor}">
+                  <TextBlock Text="{Binding Initial}" Foreground="White" FontWeight="Bold"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding InstalledVersionText}" FontSize="12" Opacity="0.7" />
+                </StackPanel>
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Border>
+
+    <!-- Selected game -->
+    <ContentControl Grid.Column="1" Content="{Binding SelectedGame}" Margin="40,36,40,20">
+      <ContentControl.ContentTemplate>
+        <DataTemplate x:DataType="vm:GameViewModel">
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Top" Spacing="6">
+              <TextBlock Text="{Binding DisplayName}" FontSize="34" FontWeight="Bold" />
+              <TextBlock Text="{Binding Description}" Opacity="0.75" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding InstalledVersionText}" Opacity="0.6" FontSize="13" />
+            </StackPanel>
+
+            <StackPanel DockPanel.Dock="Bottom" Spacing="12">
+              <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" />
+              <StackPanel Spacing="4" IsVisible="{Binding ShowProgress}">
+                <ProgressBar Minimum="0" Maximum="100" Height="8"
+                             Value="{Binding ProgressValue}"
+                             IsIndeterminate="{Binding IsProgressIndeterminate}" />
+                <TextBlock Text="{Binding ProgressText}" FontSize="12" Opacity="0.7" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Classes="accent" MinWidth="140" Height="40" FontSize="16"
+                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                        Content="{Binding PrimaryText}" Command="{Binding PrimaryCommand}" />
+                <Button Content="取消" Height="40" VerticalContentAlignment="Center"
+                        IsVisible="{Binding IsBusy}" Command="{Binding CancelCommand}" />
+                <Button Content="检查更新" Height="40" VerticalContentAlignment="Center"
+                        Command="{Binding CheckCommand}" />
+                <Button Content="恢复上一版本" Height="40" VerticalContentAlignment="Center"
+                        IsVisible="{Binding CanRollback}" Command="{Binding RollbackCommand}" />
+                <Button Content="打开游戏目录" Height="40" VerticalContentAlignment="Center"
+                        Command="{Binding OpenGameFolderCommand}" />
+              </StackPanel>
+            </StackPanel>
+
+            <Panel />
+          </DockPanel>
+        </DataTemplate>
+      </ContentControl.ContentTemplate>
+    </ContentControl>
+
+    <!-- Footer -->
+    <DockPanel Grid.Column="1" Grid.Row="1" Margin="40,0,40,16">
+      <Button DockPanel.Dock="Right" Content="打开日志" Classes="subtle" Command="{Binding OpenLogsCommand}" />
+      <TextBlock Text="{Binding LauncherVersionText}" Opacity="0.5" FontSize="12" VerticalAlignment="Center" />
+    </DockPanel>
+  </Grid>
+</Window>

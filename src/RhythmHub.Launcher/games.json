@@ -1,0 +1,16 @@
+{
+  "feedBaseUrl": "https://updates.example.com/",
+  "channel": "stable",
+  "games": [
+    {
+      "id": "majdataplay",
+      "displayName": "MajdataPlay",
+      "description": "maimai 风格的街机节奏游戏模拟器。"
+    },
+    {
+      "id": "ourtaiko",
+      "displayName": "OurTaiko",
+      "description": "太鼓风格的节奏游戏。"
+    }
+  ]
+}

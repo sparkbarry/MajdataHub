@@ -1,0 +1,9 @@
+bin/
+obj/
+*.user
+.vs/
+.idea/
+.DS_Store
+TestResults/
+artifacts/
+/dev-cdn/
