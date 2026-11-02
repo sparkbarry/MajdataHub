@@ -1,0 +1,208 @@
+name: Launcher
+run-name: Launcher ${{ github.ref_name }}
+
+# Builds and tests the launcher on every push and pull request. A launcher-v* tag also packages it
+# with Velopack and publishes it to the CDN (RhythmHub/{Windows,MacOS}/, the self-update feed) and to a
+# GitHub release (docs/operations.md §8). Everything else packages without publishing.
+
+on:
+  push:
+    branches: [main, rhythmhub]
+    tags: ["launcher-v*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  VPK_VERSION: 1.2.161
+  CDN: https://distrib.sparkbarry.com
+  BUCKET: sparkbarry-public
+  AWS_REGION: ap-northeast-1
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet test
+
+  pack:
+    name: Package (${{ matrix.platform }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, rid: win-x64, platform: Windows, channel: win }
+          - { os: macos-latest, rid: osx-arm64, platform: MacOS, channel: osx }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Version
+        id: version
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/launcher-v* ]]; then
+            version="${GITHUB_REF_NAME#launcher-v}"
+          else
+            # Dry runs get a prerelease version that can never be published.
+            version="0.0.1-ci.${GITHUB_RUN_NUMBER}" # vpk requires >= 0.0.1
+          fi
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "::error::Bad version $version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Launcher $version"
+
+      - name: Install vpk
+        run: dotnet tool install -g vpk --version "$VPK_VERSION"
+
+      - name: Previous releases (for delta packages)
+        if: startsWith(github.ref, 'refs/tags/launcher-v')
+        run: |
+          set -euo pipefail
+          feed="$CDN/RhythmHub/${{ matrix.platform }}/"
+          # CloudFront answers 403 for a missing object, so check first instead of --allowEmptyChannel.
+          code=$(curl -s -o /dev/null -w '%{http_code}' "${feed}releases.${{ matrix.channel }}.json")
+          if [[ "$code" == 200 ]]; then
+            vpk download http --url "$feed" --channel ${{ matrix.channel }} -o Releases
+          else
+            echo "No published launcher yet ($code); this is the first release."
+          fi
+
+      - name: Publish binaries
+        run: >
+          dotnet publish src/RhythmHub.Launcher -c Release -r ${{ matrix.rid }} --self-contained
+          -p:Version=${{ steps.version.outputs.version }} -o publish
+
+      - name: macOS signing keychain
+        id: signing
+        if: matrix.platform == 'MacOS'
+        env:
+          CERTIFICATES_BASE64: ${{ secrets.MACOS_CERTIFICATES_FILE_BASE64 }}
+          CERTIFICATES_PASSWORD: ${{ secrets.MACOS_CERTIFICATES_PASSWORD }}
+          APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+          APPSTORE_PRIVATE_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$CERTIFICATES_BASE64" || -z "$APPSTORE_PRIVATE_KEY" ]]; then
+            echo "::warning::macOS signing secrets are not set; the app and installer are unsigned and not notarized."
+            exit 0
+          fi
+          kc="$RUNNER_TEMP/signing.keychain-db"
+          kc_pass=$(openssl rand -hex 16)
+          security create-keychain -p "$kc_pass" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$kc_pass" "$kc"
+          echo "$CERTIFICATES_BASE64" | base64 --decode > "$RUNNER_TEMP/certs.p12"
+          security import "$RUNNER_TEMP/certs.p12" -k "$kc" -P "$CERTIFICATES_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productsign -T /usr/bin/pkgbuild
+          rm "$RUNNER_TEMP/certs.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kc_pass" "$kc" > /dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          app_id=$(security find-identity -v -p codesigning "$kc" | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)
+          inst_id=$(security find-identity -v "$kc" | sed -n 's/.*"\(Developer ID Installer: [^"]*\)".*/\1/p' | head -1)
+          [[ -n "$app_id" && -n "$inst_id" ]] || { echo "::error::The .p12 needs both a Developer ID Application and a Developer ID Installer identity."; exit 1; }
+          key="$RUNNER_TEMP/AuthKey.p8"
+          printf '%s' "$APPSTORE_PRIVATE_KEY" > "$key"
+          xcrun notarytool store-credentials rhythmhub --key "$key" --key-id "$APPSTORE_KEY_ID" --issuer "$APPSTORE_ISSUER_ID" --keychain "$kc"
+          rm "$key"
+          {
+            echo "keychain=$kc"
+            echo "app-identity=$app_id"
+            echo "installer-identity=$inst_id"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        env:
+          KEYCHAIN: ${{ steps.signing.outputs.keychain }}
+          APP_IDENTITY: ${{ steps.signing.outputs.app-identity }}
+          INSTALLER_IDENTITY: ${{ steps.signing.outputs.installer-identity }}
+        run: |
+          set -euo pipefail
+          args=(-u RhythmHub -v "${{ steps.version.outputs.version }}" -p publish -o Releases -r ${{ matrix.rid }}
+                --channel ${{ matrix.channel }} --packTitle RhythmHub --packAuthors SparkBarry)
+          if [[ "${{ matrix.platform }}" == Windows ]]; then
+            args+=(-e RhythmHub.Launcher.exe)
+          else
+            args+=(-e RhythmHub.Launcher --bundleId com.sparkbarry.rhythmhub
+                   --signEntitlements build/macos/RhythmHub.entitlements)
+            if [[ -n "$KEYCHAIN" ]]; then
+              args+=(--keychain "$KEYCHAIN" --signAppIdentity "$APP_IDENTITY"
+                     --signInstallIdentity "$INSTALLER_IDENTITY" --notaryProfile rhythmhub)
+            fi
+          fi
+          vpk pack "${args[@]}"
+          ls -la Releases
+
+      - name: Remove signing keychain
+        if: always() && steps.signing.outputs.keychain != ''
+        run: security delete-keychain "${{ steps.signing.outputs.keychain }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-${{ matrix.platform }}
+          path: Releases/
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    needs: pack
+    if: startsWith(github.ref, 'refs/tags/launcher-v')
+    runs-on: ubuntu-latest
+    concurrency: launcher-publish
+    permissions:
+      contents: write
+      id-token: write # S3 upload through GitHub OIDC (infra/aws/github-ci-roles.yaml)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload to the CDN
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#launcher-v}"
+          for platform in Windows MacOS; do
+            bash tools/ci/launcher-upload.sh "artifacts/launcher-$platform" "s3://$BUCKET/RhythmHub/$platform" "$version" "$CDN/RhythmHub/$platform"
+          done
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#launcher-v}"
+          # Only this version's packages plus the feed and installer files; older packages pulled in
+          # for delta generation already belong to earlier releases.
+          files=()
+          for dir in artifacts/launcher-*; do
+            for f in "$dir"/*; do
+              name=$(basename "$f")
+              case "$name" in
+                *-"$version"-*.nupkg) files+=("$f") ;;
+                *.nupkg) ;;
+                *) files+=("$f") ;;
+              esac
+            done
+          done
+          prerelease=()
+          [[ "$version" == *-* ]] && prerelease=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" "${files[@]}" --title "RhythmHub $version" --generate-notes "${prerelease[@]}"

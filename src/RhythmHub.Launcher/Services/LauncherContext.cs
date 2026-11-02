@@ -12,6 +12,7 @@ public sealed class LauncherContext : IDisposable
         HttpClient http, FileLoggerFactory loggers, InstanceLock? instanceLock)
     {
         InstanceLock = instanceLock;
+        SelfUpdate = new LauncherSelfUpdate(options.FeedBaseUri, options.PlatformId, loggers.CreateLogger("SelfUpdate"));
         Config = config;
         Platform = platform;
         Options = options;
@@ -27,6 +28,7 @@ public sealed class LauncherContext : IDisposable
     public UpdaterOptions Options { get; }
     public HttpClient Http { get; }
     public FileLoggerFactory Loggers { get; }
+    public LauncherSelfUpdate SelfUpdate { get; }
 
     /// <summary>Null when another launcher already owns this install root.</summary>
     public InstanceLock? InstanceLock { get; }

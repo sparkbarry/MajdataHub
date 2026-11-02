@@ -76,6 +76,10 @@
     <!-- Footer -->
     <DockPanel Grid.Column="1" Grid.Row="1" Margin="40,0,40,16">
       <Button DockPanel.Dock="Right" Content="打开日志" Classes="subtle" Command="{Binding OpenLogsCommand}" />
+      <Button DockPanel.Dock="Right" Content="重启更新" Classes="accent" Margin="0,0,8,0"
+              IsVisible="{Binding HasLauncherUpdate}" Command="{Binding RestartToUpdateCommand}" />
+      <TextBlock DockPanel.Dock="Right" Text="{Binding LauncherUpdateText}" Margin="0,0,12,0"
+                 VerticalAlignment="Center" FontSize="12" IsVisible="{Binding HasLauncherUpdate}" />
       <TextBlock Text="{Binding LauncherVersionText}" Opacity="0.5" FontSize="12" VerticalAlignment="Center" />
     </DockPanel>
   </Grid>
