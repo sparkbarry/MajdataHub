@@ -54,7 +54,9 @@
 | OurTaikoPlay 自动发布 | ✅ 已合并（OurTaiko/OurTaikoPlay#49）。首个 nightly `1.0-400` 已自动上线；从 CDN 安装的 Mac 版与 GitHub Release 的 zip 逐文件一致（218 个文件） |
 | MajdataPlay 自动发布 | 🟡 已合并（TeamMajdata/MajdataPlay#375）。Windows nightly `2.1.0-6d68d84` 已上线；macOS 首次运行时自建 Mac 磁盘耗尽而失败（见 §7.1），缩减占用的修复在 #376，需先清理那台 Mac 的磁盘 |
 | 游戏 Mac 版苹果签名 / 公证 | ⏳ 未做（通过启动器安装不受 Gatekeeper 隔离影响） |
-| 启动器 Velopack 打包、自更新、启动器签名公证 | ⏳ 未做 |
+| 启动器 Velopack 打包、自更新 | 🟡 `Launcher` 工作流已写好（见 §8），自更新已在本机验证；还没打过 `launcher-v*` 标签 |
+| 启动器 macOS 签名公证 | ⏳ 等 MajdataHub 配好 §8.3 的 Apple Secrets；未配置时 Mac 包不签名 |
+| 启动器 Windows 代码签名 | ⏳ 暂不做（安装时会有 SmartScreen 提示） |
 | 启动器内切换 stable / nightly 频道 | ⏳ 未做（目前只读 `games.json` 的 `channel`） |
 | Windows 真机安装测试 | ⏳ 未做 |
 
@@ -135,6 +137,8 @@ gh api repos/<owner>/<repo>/actions/oidc/customization/sub
 |---|---|---|---|---|
 | sparkbarry/MajdataHub | Variable | `AWS_ROLE_ARN` | `arn:aws:iam::190779300206:role/rhythmhub-ci` | 发布工作流、测试工作流 |
 | sparkbarry/MajdataHub | Secret | `RHYTHMHUB_SIGNING_KEY` | 清单签名私钥 | 手动发布、测试工作流 |
+| sparkbarry/MajdataHub | Secret | `MACOS_CERTIFICATES_FILE_BASE64`、`MACOS_CERTIFICATES_PASSWORD` | Developer ID Application + Installer 证书（一个 .p12） | 启动器 Mac 版签名（§8.3） |
+| sparkbarry/MajdataHub | Secret | `APPSTORE_KEY_ID`、`APPSTORE_ISSUER_ID`、`APPSTORE_PRIVATE_KEY` | App Store Connect API 密钥 | 启动器 Mac 版公证（§8.3） |
 | OurTaiko/OurTaikoPlay | Variable | `AWS_ROLE_ARN` | 同上 | 上传构建 |
 | OurTaiko/OurTaikoPlay | Secret | `RHYTHMHUB_SIGNING_KEY` | 清单签名私钥 | 自动签名上线 |
 | TeamMajdata/MajdataPlay | Variable | `AWS_ROLE_ARN` | 同上 | 上传构建（CI 尚未接入） |
@@ -391,3 +395,71 @@ curl -sI https://distrib.sparkbarry.com/NewGame/Windows/stable.json | grep -i ca
 | 发布后玩家迟迟看不到新版本 | 检查 `{channel}.json` 的 `Cache-Control` 是否为 `no-cache`；手动上传时漏了这个头，CDN 最多会缓存 24 小时 |
 | 自建机器报 `No space left on device` | 见 §7.1。先清理磁盘，然后在原运行上点 **Re-run failed jobs**，或者再推一次触发构建 |
 | 日志出现 `No prebuilt rhythmhub-release for …` | runner 的平台（例如 Intel Mac、Linux ARM）没有预编译版本，会自动回退到安装 .NET SDK 并从源码构建。需要的话，在 `release-tool.yml` 的 matrix 里加上这个平台 |
+
+## 8. 启动器发布（`Launcher` 工作流）
+
+启动器用 [Velopack](https://docs.velopack.io) 打包和自更新，和游戏的发布协议无关：不用清单签名私钥，
+文件格式由 Velopack 决定。
+
+### 8.1 触发方式
+
+| 触发 | 做什么 |
+|---|---|
+| 推送到 `main` / `rhythmhub`、PR、手动运行 | Windows 和 macOS 上 `dotnet test`，再用 `vpk pack` 打包（版本号 `0.0.0-ci.<运行号>`），产物只作为 Artifact，不发布 |
+| 推送 `launcher-v*` 标签（如 `launcher-v1.0.0`） | 同上，用标签里的版本号；再上传到 CDN 并创建 GitHub Release。带 `-` 的版本（如 `1.0.0-rc.1`）标成 Pre-release |
+
+```bash
+git tag launcher-v1.0.0 && git push origin launcher-v1.0.0
+```
+
+标签用 `launcher-v` 前缀，是为了和仓库里旧 Tauri 版 MajdataHub 的 `v0.x` 标签分开。
+
+### 8.2 发布位置
+
+| 位置 | 内容 |
+|---|---|
+| `https://distrib.sparkbarry.com/RhythmHub/Windows/` | `releases.win.json`（自更新源）、`RhythmHub-<v>-full.nupkg` / `-delta.nupkg`、`RhythmHub-win-Setup.exe`、`RhythmHub-win-Portable.zip` |
+| `https://distrib.sparkbarry.com/RhythmHub/MacOS/` | `releases.osx.json`、`RhythmHub-<v>-osx-full.nupkg` / `-delta.nupkg`、`RhythmHub-osx-Setup.pkg`、`RhythmHub-osx-Portable.zip` |
+| GitHub Release `launcher-v<v>` | 两个平台本版本的全部文件 |
+
+- 安装包下载地址固定：`…/RhythmHub/Windows/RhythmHub-win-Setup.exe`、`…/RhythmHub/MacOS/RhythmHub-osx-Setup.pkg`，总是最新版。
+- 启动器启动后在后台检查 `RhythmHub/<平台>/`，有新版就下载，底部出现「重启更新」。不点的话，下次启动时自动应用。
+  只有通过安装包或便携包安装的启动器会自更新，`dotnet run` 不会。
+- 上传由 `tools/ci/launcher-upload.sh` 完成，顺序是 nupkg → 安装包等 → 最后 `releases.*.json`。
+  nupkg 是 `immutable`，已存在的同版本 nupkg 会让发布失败（版本号不能重用）；其余文件名固定，用 `no-cache`。
+- 打包前先从 CDN 下载上一版，用来生成 delta 包（几十 KB 到几 MB）。
+
+### 8.3 macOS 签名和公证（需要配置一次）
+
+不配置时 Mac 包照样生成，但没有签名。用户下载后 Gatekeeper 会拦截，需要在「系统设置 → 隐私与安全性」里手动允许。
+配置步骤：
+
+1. 在 [Apple Developer → Certificates](https://developer.apple.com/account/resources/certificates/list) 创建
+   **Developer ID Application** 和 **Developer ID Installer** 两个证书（需要账号持有者权限），下载后双击导入本机钥匙串。
+2. 在「钥匙串访问」里同时选中这两个证书（连同私钥），导出成一个 `.p12` 并设密码。
+3. 上传（.p12 用 base64，密码从提示输入，不进命令历史）：
+
+   ```bash
+   base64 -i DeveloperID.p12 | gh secret set MACOS_CERTIFICATES_FILE_BASE64 --repo sparkbarry/MajdataHub
+   gh secret set MACOS_CERTIFICATES_PASSWORD --repo sparkbarry/MajdataHub
+   ```
+
+4. 公证用 App Store Connect API 密钥（[Users and Access → Integrations](https://appstoreconnect.apple.com/access/integrations/api)，
+   角色 Developer 即可）。可以和 OurTaikoPlay 的 TestFlight 用同一把，名称也一样：
+
+   ```bash
+   gh secret set APPSTORE_KEY_ID --repo sparkbarry/MajdataHub
+   gh secret set APPSTORE_ISSUER_ID --repo sparkbarry/MajdataHub
+   gh secret set APPSTORE_PRIVATE_KEY --repo sparkbarry/MajdataHub < AuthKey_XXXXXXXXXX.p8
+   ```
+
+工作流会建一个临时钥匙串，按名字前缀找出两个 Developer ID 身份，`vpk pack` 用它们签名 `.app` 和 `.pkg` 并提交公证，结束后删除钥匙串。
+.NET 需要的 Hardened Runtime 权限在 `build/macos/RhythmHub.entitlements`。
+
+### 8.4 注意
+
+- 启动器的 `games.json` 是打包进去的。改了游戏目录（例如接入新游戏）要发一个新的启动器版本。
+- 启动器版本号就是程序集版本，游戏的 `min-launcher-version` 和它比较。
+- 回滚启动器：Velopack 不支持把已安装的启动器降级。发一个修复版本（版本号更高）即可。
+- 还没有图标：目前用 Velopack 和系统的默认图标。
+

@@ -23,6 +23,9 @@ src/RhythmHub.Platform/   Windows / macOS specifics: paths, launch, process dete
 tests/RhythmHub.Updater.Tests/   xunit v3 on Microsoft.Testing.Platform
 tools/RhythmHub.ReleaseTool/     rhythmhub-release: stage, publish, keygen, fake-game
 tools/ci/go-live.sh              makes a signed release live on a channel (shared by CI paths)
+tools/ci/launcher-upload.sh      uploads the launcher's Velopack output to its self-update feed
+.github/workflows/launcher.yml   launcher test + vpk pack; launcher-v* tags publish (docs/operations.md §8)
+build/macos/                     launcher entitlements for hardened-runtime signing
 .github/workflows/release-tool.yml  prebuilt single-file rhythmhub-release → "release-tool" GitHub release
 tools/fake-game/main.c           native stand-in player for pipeline tests
 .github/actions/upload-build/    composite action the game repositories call
@@ -58,7 +61,8 @@ For local end-to-end runs see the README ("本地模拟 S3"); the launcher honou
 10. After touching the upload action, `go-live.sh`, the release tool or AWS config, run the **Pipeline test** workflow before real games use it.
 11. Self-hosted game runners have little disk: the upload action must not install large dependencies there
     (it uses the prebuilt release tool; stage bundles with APFS clones, `cp -c`). See docs/operations.md §7.1.
-12. Keep docs/operations.md §0.3 (status) and §3 (secrets table) current when infrastructure changes.
+12. The launcher ships through Velopack, not the game protocol: tag `launcher-vX.Y.Z` to release; never reuse a version.
+13. Keep docs/operations.md §0.3 (status) and §3 (secrets table) current when infrastructure changes.
 
 ## Conventions
 
