@@ -12,14 +12,17 @@
 #                                       channel still points at it (used for nightly)
 set -euo pipefail
 
+# Portable across GitHub-hosted Linux/macOS and self-hosted Macs: shasum and python3 instead of sha256sum and jq.
+sha256() { shasum -a 256 | cut -d' ' -f1; }
+
 base="s3://$BUCKET/$GAME/$PLATFORM"
 
 # wait_for <url> <file>: CloudFront must serve exactly these bytes before moving on.
 wait_for() {
   local want got
-  want=$(sha256sum "$2" | cut -d' ' -f1)
+  want=$(sha256 < "$2")
   for _ in $(seq 1 30); do
-    got=$(curl -fsS "$1" | sha256sum | cut -d' ' -f1) || true
+    got=$(curl -fsS "$1" | sha256) || true
     [[ "$got" == "$want" ]] && return 0
     sleep 2
   done
@@ -28,7 +31,8 @@ wait_for() {
 }
 
 pointer_version() { # <s3 key> -> version it points at, or nothing
-  aws s3 cp "s3://$BUCKET/$1" - 2>/dev/null | jq -r '.version // empty' || true
+  aws s3 cp "s3://$BUCKET/$1" - 2>/dev/null |
+    python3 -c 'import json, sys; print(json.load(sys.stdin).get("version", ""))' 2>/dev/null || true
 }
 
 previous=$(pointer_version "$GAME/$PLATFORM/$CHANNEL.json")
