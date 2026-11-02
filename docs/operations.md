@@ -54,7 +54,7 @@
 | OurTaikoPlay 自动发布 | ✅ 已合并（OurTaiko/OurTaikoPlay#49）。首个 nightly `1.0-400` 已自动上线；从 CDN 安装的 Mac 版与 GitHub Release 的 zip 逐文件一致（218 个文件） |
 | MajdataPlay 自动发布 | 🟡 已合并（TeamMajdata/MajdataPlay#375）。Windows nightly `2.1.0-6d68d84` 已上线；macOS 首次运行时自建 Mac 磁盘耗尽而失败（见 §7.1），缩减占用的修复在 #376，需先清理那台 Mac 的磁盘 |
 | 游戏 Mac 版苹果签名 / 公证 | ⏳ 未做（通过启动器安装不受 Gatekeeper 隔离影响） |
-| 启动器 Velopack 打包、自更新 | 🟡 `Launcher` 工作流已写好（见 §8），自更新已在本机验证；还没打过 `launcher-v*` 标签 |
+| 启动器 Velopack 打包、自更新 | 🟡 `Launcher` 工作流已写好（见 §8），自更新已在本机验证；还没发布过 `v1.x` |
 | 启动器 macOS 签名公证 | ⏳ 等 MajdataHub 配好 §8.3 的 Apple Secrets；未配置时 Mac 包不签名 |
 | 启动器 Windows 代码签名 | ⏳ 暂不做（安装时会有 SmartScreen 提示） |
 | 启动器内切换 stable / nightly 频道 | ⏳ 未做（目前只读 `games.json` 的 `channel`） |
@@ -406,13 +406,13 @@ curl -sI https://distrib.sparkbarry.com/NewGame/Windows/stable.json | grep -i ca
 | 触发 | 做什么 |
 |---|---|
 | 推送到 `main` / `rhythmhub`、PR、手动运行 | Windows 和 macOS 上 `dotnet test`，再用 `vpk pack` 打包（版本号 `0.0.1-ci.<运行号>`），产物只作为 Artifact，不发布 |
-| 推送 `launcher-v*` 标签（如 `launcher-v1.0.0`） | 同上，用标签里的版本号；再上传到 CDN 并创建 GitHub Release。带 `-` 的版本（如 `1.0.0-rc.1`）标成 Pre-release |
+| 推送 `v*` 标签（如 `v1.0.0`，必须 ≥ 1.0.0） | 同上，用标签里的版本号；再上传到 CDN 并创建 GitHub Release。带 `-` 的版本（如 `1.0.0-rc.1`）标成 Pre-release |
 
 ```bash
-git tag launcher-v1.0.0 && git push origin launcher-v1.0.0
+git tag v1.0.0 && git push origin v1.0.0
 ```
 
-标签用 `launcher-v` 前缀，是为了和仓库里旧 Tauri 版 MajdataHub 的 `v0.x` 标签分开。
+`v0.x` 标签和 Release 属于旧 Tauri 版 MajdataHub，工作流遇到 `v0.*` 标签会直接报错。RhythmHub 从 `v1.0.0` 开始。
 
 ### 8.2 发布位置
 
@@ -420,7 +420,7 @@ git tag launcher-v1.0.0 && git push origin launcher-v1.0.0
 |---|---|
 | `https://distrib.sparkbarry.com/RhythmHub/Windows/` | `releases.win.json`（自更新源）、`RhythmHub-<v>-full.nupkg` / `-delta.nupkg`、`RhythmHub-win-Setup.exe`、`RhythmHub-win-Portable.zip` |
 | `https://distrib.sparkbarry.com/RhythmHub/MacOS/` | `releases.osx.json`、`RhythmHub-<v>-osx-full.nupkg` / `-delta.nupkg`、`RhythmHub-osx-Setup.pkg`、`RhythmHub-osx-Portable.zip` |
-| GitHub Release `launcher-v<v>` | 两个平台本版本的全部文件 |
+| GitHub Release `v<v>` | 沿用旧 MajdataHub 的格式：标题 `RhythmHub v<v>`、无说明；`RhythmHub_<v>_x64-setup.exe`、`RhythmHub_<v>_x64-portable.zip`、`RhythmHub_<v>_aarch64.pkg`、`RhythmHub_<v>_aarch64-portable.zip`，外加本版本的 nupkg 和 `releases.*.json`（可作备用更新源） |
 
 - 安装包下载地址固定：`…/RhythmHub/Windows/RhythmHub-win-Setup.exe`、`…/RhythmHub/MacOS/RhythmHub-osx-Setup.pkg`，总是最新版。
 - 启动器启动后在后台检查 `RhythmHub/<平台>/`，有新版就下载，底部出现「重启更新」。不点的话，下次启动时自动应用。
@@ -462,4 +462,6 @@ git tag launcher-v1.0.0 && git push origin launcher-v1.0.0
 - 启动器版本号就是程序集版本，游戏的 `min-launcher-version` 和它比较。
 - 回滚启动器：Velopack 不支持把已安装的启动器降级。发一个修复版本（版本号更高）即可。
 - 还没有图标：目前用 Velopack 和系统的默认图标。
+- 旧 Tauri 版客户端（v0.5.x）的更新地址是 GitHub `releases/latest/download/latest.json` 和 CNB 镜像。
+  `v1.x` 成为 Latest 后，前者返回 404，旧客户端只会认为没有更新，不会装上 RhythmHub。旧用户需要手动下载新安装包。
 

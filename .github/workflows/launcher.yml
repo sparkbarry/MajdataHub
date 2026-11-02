@@ -1,14 +1,15 @@
 name: Launcher
 run-name: Launcher ${{ github.ref_name }}
 
-# Builds and tests the launcher on every push and pull request. A launcher-v* tag also packages it
+# Builds and tests the launcher on every push and pull request. A v1.x (or later) tag also packages it
 # with Velopack and publishes it to the CDN (RhythmHub/{Windows,MacOS}/, the self-update feed) and to a
-# GitHub release (docs/operations.md §8). Everything else packages without publishing.
+# GitHub release in the old MajdataHub format (docs/operations.md §8). Everything else packages
+# without publishing. v0.x tags belong to the retired Tauri MajdataHub and are never built here.
 
 on:
   push:
     branches: [main, rhythmhub]
-    tags: ["launcher-v*"]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -56,8 +57,9 @@ jobs:
         id: version
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_REF" == refs/tags/launcher-v* ]]; then
-            version="${GITHUB_REF_NAME#launcher-v}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            [[ "$version" != 0.* ]] || { echo "::error::v0.x tags belong to the old Tauri MajdataHub; release v1.0.0 or later"; exit 1; }
           else
             # Dry runs get a prerelease version that can never be published.
             version="0.0.1-ci.${GITHUB_RUN_NUMBER}" # vpk requires >= 0.0.1
@@ -70,7 +72,7 @@ jobs:
         run: dotnet tool install -g vpk --version "$VPK_VERSION"
 
       - name: Previous releases (for delta packages)
-        if: startsWith(github.ref, 'refs/tags/launcher-v')
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           set -euo pipefail
           feed="$CDN/RhythmHub/${{ matrix.platform }}/"
@@ -160,7 +162,7 @@ jobs:
   publish:
     name: Publish
     needs: pack
-    if: startsWith(github.ref, 'refs/tags/launcher-v')
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     concurrency: launcher-publish
     permissions:
@@ -179,7 +181,7 @@ jobs:
       - name: Upload to the CDN
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#launcher-v}"
+          version="${GITHUB_REF_NAME#v}"
           for platform in Windows MacOS; do
             bash tools/ci/launcher-upload.sh "artifacts/launcher-$platform" "s3://$BUCKET/RhythmHub/$platform" "$version" "$CDN/RhythmHub/$platform"
           done
@@ -189,20 +191,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#launcher-v}"
-          # Only this version's packages plus the feed and installer files; older packages pulled in
-          # for delta generation already belong to earlier releases.
-          files=()
-          for dir in artifacts/launcher-*; do
-            for f in "$dir"/*; do
-              name=$(basename "$f")
-              case "$name" in
-                *-"$version"-*.nupkg) files+=("$f") ;;
-                *.nupkg) ;;
-                *) files+=("$f") ;;
-              esac
-            done
-          done
+          version="${GITHUB_REF_NAME#v}"
+          # Same shape as the old MajdataHub releases: tag vX.Y.Z, title "RhythmHub vX.Y.Z", no notes,
+          # installers named <Product>_<version>_<arch>-setup.<ext>. The Velopack packages and
+          # releases.*.json keep their names so the release can also serve as a backup update feed.
+          mkdir release
+          cp artifacts/launcher-Windows/RhythmHub-win-Setup.exe "release/RhythmHub_${version}_x64-setup.exe"
+          cp artifacts/launcher-Windows/RhythmHub-win-Portable.zip "release/RhythmHub_${version}_x64-portable.zip"
+          cp artifacts/launcher-MacOS/RhythmHub-osx-Setup.pkg "release/RhythmHub_${version}_aarch64.pkg"
+          cp artifacts/launcher-MacOS/RhythmHub-osx-Portable.zip "release/RhythmHub_${version}_aarch64-portable.zip"
+          # Only this version's packages; older ones were pulled in for delta generation.
+          cp artifacts/launcher-*/*-"$version"-*.nupkg artifacts/launcher-*/releases.*.json release/
+          ls -la release
           prerelease=()
           [[ "$version" == *-* ]] && prerelease=(--prerelease)
-          gh release create "$GITHUB_REF_NAME" "${files[@]}" --title "RhythmHub $version" --generate-notes "${prerelease[@]}"
+          gh release create "$GITHUB_REF_NAME" release/* --title "RhythmHub v$version" --notes "" "${prerelease[@]}"
