@@ -59,14 +59,49 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-dotnet@v4
+    # Prebuilt standalone rhythmhub-release from the "release-tool" release (release-tool.yml), so the
+    # runner needs no .NET SDK. Unknown platforms fall back to building it from source.
+    - name: Get release tool
+      id: tool
+      shell: bash
+      run: |
+        set -euo pipefail
+        case "$(uname -s)-$(uname -m)" in
+          Linux-x86_64) rid=linux-x64 ;;
+          Darwin-arm64) rid=osx-arm64 ;;
+          *) rid="" ;;
+        esac
+        dir="$RUNNER_TEMP/rhythmhub-release"
+        rm -rf "$dir" && mkdir -p "$dir"
+        if [[ -n "$rid" ]] && curl -fsSL --retry 3 \
+            "https://github.com/sparkbarry/MajdataHub/releases/download/release-tool/rhythmhub-release-$rid.tar.gz" \
+            | tar -xz -C "$dir"; then
+          echo "RHYTHMHUB_RELEASE=$dir/rhythmhub-release" >> "$GITHUB_ENV"
+          echo "prebuilt=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "::warning::No prebuilt rhythmhub-release for $(uname -s)-$(uname -m); building from source."
+          echo "prebuilt=false" >> "$GITHUB_OUTPUT"
+        fi
+        df -h "$RUNNER_TEMP" | tail -1 | awk '{print "Free space on the runner temp volume: " $4}'
+
+    - if: steps.tool.outputs.prebuilt != 'true'
+      uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 10.0.x
+
+    - name: Build release tool from source
+      if: steps.tool.outputs.prebuilt != 'true'
+      shell: bash
+      env:
+        TOOL: ${{ github.action_path }}/../../../tools/RhythmHub.ReleaseTool
+      run: |
+        set -euo pipefail
+        dotnet publish "$TOOL" -c Release -o "$RUNNER_TEMP/rhythmhub-release-src"
+        echo "RHYTHMHUB_RELEASE=$RUNNER_TEMP/rhythmhub-release-src/RhythmHub.ReleaseTool" >> "$GITHUB_ENV"
 
     - name: Describe build
       shell: bash
       env:
-        TOOL: ${{ github.action_path }}/../../../tools/RhythmHub.ReleaseTool
         GAME: ${{ inputs.game }}
         PLATFORM: ${{ inputs.platform }}
         VERSION: ${{ inputs.version }}
@@ -78,7 +113,7 @@ runs:
         args=(stage --game "$GAME" --platform "$PLATFORM" --version "$VERSION"
               --input "$BUILD_PATH" --entrypoint "$ENTRYPOINT" --out "$RUNNER_TEMP/$VERSION.unsigned.json")
         if [[ -n "$MIN_LAUNCHER" ]]; then args+=(--min-launcher "$MIN_LAUNCHER"); fi
-        dotnet run --project "$TOOL" -c Release -- "${args[@]}"
+        "$RHYTHMHUB_RELEASE" "${args[@]}"
 
     # GitHub-hosted runners ship the AWS CLI; self-hosted ones (MajdataPlay's Macs) may not.
     - name: Ensure AWS CLI
@@ -141,7 +176,6 @@ runs:
       if: inputs.channel != ''
       shell: bash
       env:
-        TOOL: ${{ github.action_path }}/../../../tools/RhythmHub.ReleaseTool
         GO_LIVE: ${{ github.action_path }}/../../../tools/ci/go-live.sh
         RHYTHMHUB_SIGNING_KEY: ${{ inputs.signing-key }}
         KEY_ID: ${{ inputs.key-id }}
@@ -169,6 +203,6 @@ runs:
           # The files were just uploaded from here; checking them locally avoids downloading the build again.
           ln -sfn "$(cd "$BUILD_PATH" && pwd)" "$DIR/$VERSION"
         fi
-        dotnet run --project "$TOOL" -c Release -- publish --feed "$RUNNER_TEMP/feed" \
+        "$RHYTHMHUB_RELEASE" publish --feed "$RUNNER_TEMP/feed" \
           --game "$GAME" --platform "$PLATFORM" --version "$VERSION" --channel "$CHANNEL" --key-id "$KEY_ID"
         bash "$GO_LIVE"

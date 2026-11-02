@@ -1,0 +1,81 @@
+name: Release tool binaries
+run-name: Release tool binaries (${{ github.sha }})
+
+# Builds rhythmhub-release as a standalone single-file executable and publishes it to the rolling
+# "release-tool" GitHub release. The upload-build action downloads it, so game runners (including
+# self-hosted Macs with little disk) never need the .NET SDK.
+on:
+  push:
+    branches: [main]
+    paths:
+      - tools/RhythmHub.ReleaseTool/**
+      - src/RhythmHub.Updater/**
+      - Directory.Build.props
+      - Directory.Packages.props
+      - global.json
+      - .github/workflows/release-tool.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-tool
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - rid: linux-x64
+            os: ubuntu-latest
+          # Built on macOS so the arm64 binary carries the ad-hoc signature Apple silicon requires.
+          - rid: osx-arm64
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Publish
+        run: |
+          set -euo pipefail
+          dotnet publish tools/RhythmHub.ReleaseTool -c Release -r "${{ matrix.rid }}" --self-contained \
+            -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o out
+          mv out/RhythmHub.ReleaseTool out/rhythmhub-release
+          ./out/rhythmhub-release keygen --out "$RUNNER_TEMP/smoke.key" | tail -1
+          tar -C out -czf "rhythmhub-release-${{ matrix.rid }}.tar.gz" rhythmhub-release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rhythmhub-release-${{ matrix.rid }}
+          path: rhythmhub-release-${{ matrix.rid }}.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: rhythmhub-release-*
+          merge-multiple: true
+      - name: Update the release-tool release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          notes="rhythmhub-release built from ${GITHUB_SHA}. Downloaded by .github/actions/upload-build; not a launcher release."
+          if gh release view release-tool >/dev/null 2>&1; then
+            gh release edit release-tool --notes "$notes"
+          else
+            gh release create release-tool --prerelease --title "Release tool (CI)" --notes "$notes" --target "$GITHUB_SHA"
+          fi
+          gh release upload release-tool rhythmhub-release-*.tar.gz --clobber
