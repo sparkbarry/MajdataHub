@@ -16,6 +16,8 @@ tools/
   RhythmHub.ReleaseTool/  stage（游戏 CI 生成文件清单）、publish（校验并签名发布）、keygen、fake-game
 docs/
   update-protocol.md    更新协议与本地目录约定
+  operations.md         发布基础设施维护手册：AWS / CDN、Secrets、发布回滚、接入新游戏
+infra/aws/              CI 访问 AWS 的 CloudFormation 模板
 ```
 
 ## 开发
