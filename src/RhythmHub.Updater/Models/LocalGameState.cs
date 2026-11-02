@@ -10,11 +10,14 @@ public sealed record LocalGameState
     public bool LastLaunchSuccessful { get; init; }
 }
 
-/// <summary>Written next to each installed version as <c>versions/{v}/.rhythmhub/release.json</c>.</summary>
+/// <summary>
+/// Written next to each installed version as <c>versions/{v}/.rhythmhub/release.json</c>;
+/// the signed manifest itself is kept beside it as <c>manifest.json</c>.
+/// </summary>
 public sealed record InstalledReleaseInfo
 {
     public required string Version { get; init; }
     public required string Entrypoint { get; init; }
-    public required string Sha256 { get; init; }
+    public required string ManifestSha256 { get; init; }
     public DateTimeOffset InstalledAt { get; init; }
 }

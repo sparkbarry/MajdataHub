@@ -1,16 +1,16 @@
 {
-  "feedBaseUrl": "https://updates.example.com/",
+  "feedBaseUrl": "https://distrib.sparkbarry.com/",
   "channel": "stable",
   "games": [
     {
-      "id": "majdataplay",
+      "id": "MajdataPlay",
       "displayName": "MajdataPlay",
       "description": "maimai 风格的街机节奏游戏模拟器。",
       "healthCheck": false
     },
     {
-      "id": "ourtaiko",
-      "displayName": "OurTaiko",
+      "id": "OurTaikoPlay",
+      "displayName": "OurTaikoPlay",
       "description": "太鼓风格的节奏游戏。",
       "healthCheck": false
     }

@@ -1,29 +1,30 @@
 namespace RhythmHub.Updater.Models;
 
+/// <summary>A verified release the launcher can install.</summary>
+/// <param name="ManifestBytes">The signed manifest exactly as served; kept next to the install for later diffs.</param>
+/// <param name="DownloadBytes">Estimated bytes to fetch, after reusing files from installed versions.</param>
 public sealed record GameRelease(
     string GameId,
     string Version,
     string Platform,
-    Uri PackageUrl,
-    long SizeBytes,
-    long? InstalledSizeBytes,
-    string Sha256,
-    string Entrypoint,
-    Uri? ReleaseNotesUrl)
+    string ManifestSha256,
+    ReleaseManifest Manifest,
+    byte[] ManifestBytes,
+    long DownloadBytes)
 {
-    public static GameRelease FromManifest(GameManifest m) => new(
-        m.GameId,
-        m.Version,
-        m.Platform,
-        new Uri(m.Package.Url),
-        m.Package.SizeBytes,
-        m.Package.InstalledSizeBytes,
-        m.Package.Sha256.ToLowerInvariant(),
-        m.Entrypoint,
-        m.ReleaseNotesUrl is null ? null : new Uri(m.ReleaseNotesUrl));
+    public string Entrypoint => Manifest.Entrypoint;
+    public long InstalledSizeBytes => Manifest.InstalledSizeBytes;
+    public Uri? ReleaseNotesUrl => Manifest.ReleaseNotesUrl is { } u ? new Uri(u) : null;
 }
 
-public sealed record DownloadProgress(long CompletedBytes, long TotalBytes);
+public enum DownloadStage
+{
+    /// <summary>Copying and re-hashing unchanged files from an installed version.</summary>
+    ReusingLocalFiles,
+    Downloading,
+}
+
+public sealed record DownloadProgress(long CompletedBytes, long TotalBytes, DownloadStage Stage = DownloadStage.Downloading);
 
 /// <summary>A version that is present under <c>versions/</c> and referenced by current.json.</summary>
 public sealed record InstalledGame(string Version, string VersionDirectory, string Entrypoint);

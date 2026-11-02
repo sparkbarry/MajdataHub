@@ -135,9 +135,12 @@ public sealed partial class GameViewModel : ObservableObject
                 return;
             }
             var resumable = await _updater.GetResumableBytesAsync(_available, ct);
+            var download = _available.DownloadBytes;
             var size = resumable > 0
-                ? $"已下载 {FormatSize(resumable)} / {FormatSize(_available.SizeBytes)}，可继续"
-                : FormatSize(_available.SizeBytes);
+                ? $"已下载 {FormatSize(resumable)}，可继续"
+                : Installed is not null && download < _available.InstalledSizeBytes
+                    ? $"需下载 {FormatSize(download)}，完整大小 {FormatSize(_available.InstalledSizeBytes)}"
+                    : FormatSize(download);
             SetState(GameState.UpdateAvailable, Installed is null
                 ? $"可安装 {_available.Version}（{size}）"
                 : $"发现新版本 {_available.Version}（{size}）");
@@ -151,10 +154,21 @@ public sealed partial class GameViewModel : ObservableObject
         await RunAsync(GameState.Downloading, $"正在下载 {release.Version}…", null, async ct =>
         {
             var meter = new SpeedMeter();
+            var stage = DownloadStage.Downloading;
             var progress = new Progress<DownloadProgress>(p =>
             {
+                if (p.Stage != stage)
+                {
+                    stage = p.Stage;
+                    meter = new SpeedMeter();
+                    StatusText = stage == DownloadStage.ReusingLocalFiles
+                        ? "正在复用本地未变化的文件…"
+                        : $"正在下载 {release.Version}…";
+                }
                 ProgressValue = p.TotalBytes == 0 ? 0 : 100.0 * p.CompletedBytes / p.TotalBytes;
-                ProgressText = $"{FormatSize(p.CompletedBytes)} / {FormatSize(p.TotalBytes)}  ·  {FormatSize((long)meter.Sample(p.CompletedBytes))}/s";
+                ProgressText = stage == DownloadStage.ReusingLocalFiles
+                    ? $"{FormatSize(p.CompletedBytes)} / {FormatSize(p.TotalBytes)}"
+                    : $"{FormatSize(p.CompletedBytes)} / {FormatSize(p.TotalBytes)}  ·  {FormatSize((long)meter.Sample(p.CompletedBytes))}/s";
             });
             await _updater.DownloadAsync(release, progress, ct);
 
@@ -299,7 +313,7 @@ public sealed partial class GameViewModel : ObservableObject
         UpdateErrorCode.Network => "无法连接更新服务器",
         UpdateErrorCode.Timeout => "网络超时，已下载的部分会保留，可继续下载",
         UpdateErrorCode.RateLimited => "更新服务器繁忙，请稍后重试",
-        UpdateErrorCode.PackageNotFound => "服务器上找不到安装包",
+        UpdateErrorCode.PackageNotFound => "服务器上缺少该版本的文件",
         UpdateErrorCode.SignatureInvalid => "更新清单签名无效，已拒绝",
         UpdateErrorCode.ManifestNotFound => "服务器上暂无该游戏的发布版本",
         UpdateErrorCode.ManifestInvalid => "更新清单无效",

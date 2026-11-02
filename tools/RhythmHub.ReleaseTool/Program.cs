@@ -1,29 +1,36 @@
-using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using RhythmHub.Updater;
 using RhythmHub.Updater.Models;
 using RhythmHub.Updater.Security;
 
-// rhythmhub-release: packages a Unity player build into the feed layout described in docs/update-protocol.md.
+// rhythmhub-release: describes Unity builds as signed release manifests (docs/update-protocol.md).
 return await ReleaseTool.RunAsync(args);
 
 internal static class ReleaseTool
 {
     private const string Usage = """
         Usage:
-          pack --game <id> --platform <win-x64|osx-arm64|osx-x64> --version <x.y.z>
-               --input <build dir> --entrypoint <Game.exe|Game.app>
-               --base-url <https://cdn/> --out <feed root> --key-id <id>
-               [--channel stable] [--min-launcher 0.1.0] [--release-notes-url <url>]
-              Zips <input>, writes game/<id>/<platform>/releases/<version>/game.zip and the signed channel manifest.
-              The release zip is written before the manifest, matching the production publish order.
+          stage --game <MajdataPlay> --platform <Windows|MacOS> --version <x.y.z>
+                --input <build dir> --entrypoint <Game.exe|Game.app> --out <manifest file>
+                [--min-launcher 0.1.0] [--release-notes-url <https://…>] [--copy-to <local feed root>]
+              Run in the game's CI, on the finished (for macOS: signed and notarized) build. Writes the unsigned
+              release manifest, which records hashes, permission bits, symlinks and empty directories.
+              Upload <input> to <game>/<platform>/<version>/ (aws s3 sync --no-follow-symlinks) and the manifest to
+              <game>/<platform>/<version>.unsigned.json. --copy-to does both into a local folder instead.
+
+          publish --feed <local feed root> --game <id> --platform <id> --version <x.y.z> --key-id <id> [--channel stable]
+              Run in this repository's release workflow on a local copy of the feed. Checks every file under
+              <version>/ against <version>.unsigned.json, writes the signed <version>.json, then the signed
+              <channel>.json pointer. If <version>.json already exists (rollback), only re-points the channel.
               The Ed25519 private key is read from $RHYTHMHUB_SIGNING_KEY (base64), never from the command line.
 
           keygen --out <private key file>
               Creates an Ed25519 key pair; prints the public key to paste into ReleaseKeys.cs.
 
-          fake-game --platform <id> --name <Name> --out <dir> [--label <text>] [--crash true]
+          fake-game --platform <Windows|MacOS> --name <Name> --out <dir> [--label <text>] [--crash true]
               Writes a tiny stand-in player (Windows layout or a macOS .app) for local end-to-end testing.
               The macOS one writes the health marker; with --crash it exits immediately instead.
         """;
@@ -40,23 +47,24 @@ internal static class ReleaseTool
     public static async Task<int> RunAsync(string[] args)
     {
         if (args.Length == 0) { Console.Error.WriteLine(Usage); return 2; }
-        var opts = ParseOptions(args[1..]);
         try
         {
+            var opts = ParseOptions(args[1..]);
             switch (args[0])
             {
-                case "pack": await PackAsync(opts); return 0;
+                case "stage": await StageAsync(opts); return 0;
+                case "publish": await PublishAsync(opts); return 0;
                 case "fake-game": FakeGame(opts); return 0;
                 case "keygen": KeyGen(opts); return 0;
                 default: Console.Error.WriteLine(Usage); return 2;
             }
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is InvalidOperationException or UpdateException or IOException)
         {
             Console.Error.WriteLine(ex.Message);
             return 1;
         }
-        catch (KeyNotFoundException ex)
+        catch (Exception ex) when (ex is KeyNotFoundException or ArgumentException)
         {
             Console.Error.WriteLine(ex.Message);
             Console.Error.WriteLine(Usage);
@@ -64,108 +72,135 @@ internal static class ReleaseTool
         }
     }
 
-    private static async Task PackAsync(Dictionary<string, string> o)
+    private static async Task StageAsync(Dictionary<string, string> o)
+    {
+        var game = Req(o, "game");
+        var platform = Req(o, "platform");
+        var version = Req(o, "version");
+        var input = Path.GetFullPath(Req(o, "input"));
+        var manifest = await ReleaseManifestBuilder.FromDirectoryAsync(input, game, platform, version, Req(o, "entrypoint"),
+            CancellationToken.None);
+        manifest = manifest with
+        {
+            MinimumLauncherVersion = o.GetValueOrDefault("min-launcher"),
+            ReleaseNotesUrl = o.GetValueOrDefault("release-notes-url"),
+        };
+        ManifestClient.ValidateRelease(manifest, game, platform);
+        var json = JsonSerializer.Serialize(manifest, Json);
+
+        var outPath = Path.GetFullPath(Req(o, "out"));
+        Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
+        await File.WriteAllTextAsync(outPath, json);
+        Console.WriteLine($"manifest  {outPath}");
+        Console.WriteLine($"files     {manifest.Files.Count} ({manifest.InstalledSizeBytes} bytes), " +
+                          $"{manifest.Symlinks.Count} symlinks, {manifest.Directories.Count} empty dirs");
+
+        if (o.GetValueOrDefault("copy-to") is { } feedRoot)
+        {
+            var platformDir = Path.Combine(Path.GetFullPath(feedRoot), game, platform);
+            var versionDir = Path.Combine(platformDir, version);
+            if (Directory.Exists(versionDir) || File.Exists(Path.Combine(platformDir, version + ".json")))
+                throw new InvalidOperationException($"{game}/{platform}/{version} already exists; published versions are immutable.");
+            foreach (var f in manifest.Files)
+            {
+                var target = Path.Combine(versionDir, f.Path);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(Path.Combine(input, f.Path), target);
+            }
+            await File.WriteAllTextAsync(Path.Combine(platformDir, version + ".unsigned.json"), json);
+            Console.WriteLine($"copied    {versionDir}");
+        }
+    }
+
+    private static async Task PublishAsync(Dictionary<string, string> o)
     {
         var game = Req(o, "game");
         var platform = Req(o, "platform");
         var version = Req(o, "version");
         var channel = o.GetValueOrDefault("channel", "stable");
-        var input = Path.GetFullPath(Req(o, "input"));
-        var entrypoint = Req(o, "entrypoint");
-        var baseUrl = Req(o, "base-url").TrimEnd('/') + "/";
-        var outRoot = Path.GetFullPath(Req(o, "out"));
         var keyId = Req(o, "key-id");
         var privateKey = Environment.GetEnvironmentVariable(SigningKeyVariable)
             ?? throw new InvalidOperationException($"Set {SigningKeyVariable} to the base64 Ed25519 private key.");
+        var trusted = new Dictionary<string, string> { [keyId] = ManifestSigning.PublicKeyFor(privateKey) };
 
-        if (!File.Exists(Path.Combine(input, entrypoint)) && !Directory.Exists(Path.Combine(input, entrypoint)))
-            throw new InvalidOperationException($"{entrypoint} not found in {input}");
-
-        var platformDir = Path.Combine(outRoot, "game", game, platform);
-        var releaseRel = $"game/{game}/{platform}/releases/{version}/game.zip";
-        var zipPath = Path.Combine(outRoot, releaseRel.Replace('/', Path.DirectorySeparatorChar));
-        if (File.Exists(zipPath))
-            throw new InvalidOperationException($"{releaseRel} already exists; published releases are immutable.");
-        Directory.CreateDirectory(Path.GetDirectoryName(zipPath)!);
-
-        var installedSize = ZipDirectory(input, zipPath);
-        var sha = await FileHasher.ComputeSha256Async(zipPath, CancellationToken.None);
-        var manifest = new GameManifest
+        var platformDir = Path.Combine(Path.GetFullPath(Req(o, "feed")), game, platform);
+        var signedPath = Path.Combine(platformDir, version + ".json");
+        byte[] manifestBytes;
+        if (File.Exists(signedPath))
         {
-            SchemaVersion = 1,
+            manifestBytes = await File.ReadAllBytesAsync(signedPath);
+            var existing = ManifestClient.Parse<ReleaseManifest>(manifestBytes, trusted);
+            ManifestClient.ValidateRelease(existing, game, platform);
+            Console.WriteLine($"{version}.json is already signed; re-pointing {channel} only");
+        }
+        else
+        {
+            var unsignedPath = Path.Combine(platformDir, version + ".unsigned.json");
+            var unsignedBytes = await File.ReadAllBytesAsync(unsignedPath);
+            var manifest = JsonSerializer.Deserialize<ReleaseManifest>(unsignedBytes, Json)
+                ?? throw new InvalidOperationException($"{unsignedPath} is empty.");
+            ManifestClient.ValidateRelease(manifest, game, platform);
+            if (manifest.Version != version)
+                throw new InvalidOperationException($"{unsignedPath} describes {manifest.Version}, not {version}.");
+            await VerifyFilesAsync(manifest, Path.Combine(platformDir, version));
+
+            var node = JsonNode.Parse(unsignedBytes)!.AsObject();
+            ManifestSigning.Sign(node, privateKey, keyId);
+            manifestBytes = Encoding.UTF8.GetBytes(node.ToJsonString(Json));
+            ManifestClient.Parse<ReleaseManifest>(manifestBytes, trusted);
+            await WriteAtomicAsync(signedPath, manifestBytes);
+        }
+
+        var pointer = new ChannelPointer
+        {
+            SchemaVersion = ManifestClient.SchemaVersion,
             GameId = game,
-            Channel = channel,
             Platform = platform,
+            Channel = channel,
             Version = version,
-            MinimumLauncherVersion = o.GetValueOrDefault("min-launcher"),
-            ReleaseNotesUrl = o.GetValueOrDefault("release-notes-url"),
-            Package = new ManifestPackage
-            {
-                Url = baseUrl + releaseRel,
-                SizeBytes = new FileInfo(zipPath).Length,
-                Sha256 = sha,
-                InstalledSizeBytes = installedSize,
-            },
-            Entrypoint = entrypoint,
+            ManifestSha256 = Convert.ToHexStringLower(SHA256.HashData(manifestBytes)),
         };
-        var node = JsonSerializer.SerializeToNode(manifest, Json)!.AsObject();
-        ManifestSigning.Sign(node, privateKey, keyId);
-        ManifestSigning.Verify(node, new Dictionary<string, string> { [keyId] = ManifestSigning.PublicKeyFor(privateKey) });
+        var pointerNode = JsonSerializer.SerializeToNode(pointer, Json)!.AsObject();
+        ManifestSigning.Sign(pointerNode, privateKey, keyId);
+        var pointerBytes = Encoding.UTF8.GetBytes(pointerNode.ToJsonString(Json));
+        ManifestClient.ValidatePointer(ManifestClient.Parse<ChannelPointer>(pointerBytes, trusted), game, platform, channel);
+        var pointerPath = Path.Combine(platformDir, channel + ".json");
+        await WriteAtomicAsync(pointerPath, pointerBytes);
 
-        var manifestPath = Path.Combine(platformDir, $"{channel}.json");
-        var tmp = manifestPath + ".tmp";
-        await File.WriteAllTextAsync(tmp, node.ToJsonString(Json));
-        File.Move(tmp, manifestPath, overwrite: true);
-
-        Console.WriteLine($"zip       {zipPath}");
-        Console.WriteLine($"sha256    {sha}");
-        Console.WriteLine($"manifest  {manifestPath}");
+        Console.WriteLine("Upload in this order (each only after the previous is reachable):");
+        Console.WriteLine($"  1. {signedPath}   (immutable cache)");
+        Console.WriteLine($"  2. {pointerPath}   (no-cache) <- this makes {version} live on {channel}");
     }
 
-    /// <summary>Like `ditto -c -k --keepParent`-less: stores unix modes and symlinks as links, not their targets.</summary>
-    private static long ZipDirectory(string input, string zipPath)
+    /// <summary>Every file the manifest promises must be present and byte-identical in the uploaded copy.</summary>
+    private static async Task VerifyFilesAsync(ReleaseManifest manifest, string versionDir)
     {
-        long total = 0;
-        using var zip = ZipFile.Open(zipPath, ZipArchiveMode.Create);
-        foreach (var path in Walk(input).Order(StringComparer.Ordinal))
+        var problems = new List<string>();
+        foreach (var f in manifest.Files)
         {
-            var rel = Path.GetRelativePath(input, path).Replace(Path.DirectorySeparatorChar, '/');
-            var info = new FileInfo(path);
-            var isLink = info.LinkTarget is not null;
-            var isDir = !isLink && Directory.Exists(path);
-            if (isDir && Directory.EnumerateFileSystemEntries(path).Any()) continue;
-
-            var entry = zip.CreateEntry(isDir ? rel + "/" : rel, CompressionLevel.Optimal);
-            if (!OperatingSystem.IsWindows())
-            {
-                var mode = (int)File.GetUnixFileMode(path);
-                var type = isLink ? 0xA000 : isDir ? 0x4000 : 0x8000;
-                entry.ExternalAttributes = (type | mode) << 16;
-            }
-            if (isDir) continue;
-            using var dest = entry.Open();
-            if (isLink)
-            {
-                var bytes = System.Text.Encoding.UTF8.GetBytes(info.LinkTarget!);
-                dest.Write(bytes);
-                continue;
-            }
-            using var src = File.OpenRead(path);
-            src.CopyTo(dest);
-            total += info.Length;
+            var path = ManifestPaths.Under(versionDir, f.Path);
+            if (!File.Exists(path)) problems.Add($"missing  {f.Path}");
+            else if (new FileInfo(path).Length != f.Size) problems.Add($"size     {f.Path}");
+            else if (await FileHasher.ComputeSha256Async(path, CancellationToken.None) != f.Sha256) problems.Add($"hash     {f.Path}");
         }
-        return total;
+        if (problems.Count > 0)
+            throw new InvalidOperationException($"Uploaded files do not match the manifest:\n  {string.Join("\n  ", problems.Take(50))}");
+
+        var expected = manifest.Files.Select(f => f.Path).ToHashSet(StringComparer.Ordinal);
+        var extra = Directory.Exists(versionDir)
+            ? Directory.EnumerateFiles(versionDir, "*", SearchOption.AllDirectories)
+                .Select(p => Path.GetRelativePath(versionDir, p).Replace(Path.DirectorySeparatorChar, '/'))
+                .Where(p => !expected.Contains(p)).ToList()
+            : [];
+        foreach (var e in extra.Take(20)) Console.WriteLine($"warning: {e} is uploaded but not in the manifest; clients ignore it");
+        Console.WriteLine($"verified  {manifest.Files.Count} files");
     }
 
-    /// <summary>Recursive listing that records symlinked directories as entries instead of descending into them.</summary>
-    private static IEnumerable<string> Walk(string dir)
+    private static async Task WriteAtomicAsync(string path, byte[] bytes)
     {
-        foreach (var path in Directory.EnumerateFileSystemEntries(dir, "*", new EnumerationOptions { AttributesToSkip = 0 }))
-        {
-            yield return path;
-            if (new FileInfo(path).LinkTarget is null && Directory.Exists(path))
-                foreach (var child in Walk(path)) yield return child;
-        }
+        var tmp = path + ".tmp";
+        await File.WriteAllBytesAsync(tmp, bytes);
+        File.Move(tmp, path, overwrite: true);
     }
 
     private static void KeyGen(Dictionary<string, string> o)
@@ -187,7 +222,7 @@ internal static class ReleaseTool
         var outDir = Path.GetFullPath(Req(o, "out"));
         Directory.CreateDirectory(outDir);
 
-        if (platform.StartsWith("win", StringComparison.Ordinal))
+        if (platform == "Windows")
         {
             // Not runnable; enough to satisfy the Windows package check.
             File.WriteAllText(Path.Combine(outDir, $"{name}.exe"), "fake");
@@ -217,7 +252,7 @@ internal static class ReleaseTool
         File.WriteAllText(Path.Combine(resources, "label.txt"), label);
         if (o.GetValueOrDefault("crash") == "true") File.WriteAllText(Path.Combine(resources, "crash"), "");
         File.CreateSymbolicLink(Path.Combine(resources, "label-link.txt"), "label.txt");
-        // Framework-style directory symlink, the shape that breaks naive zip tools.
+        // Framework-style directory symlink, which S3 cannot store and the manifest must carry.
         var framework = Path.Combine(contents, "Frameworks", "Fake.framework");
         Directory.CreateDirectory(Path.Combine(framework, "Versions", "A"));
         File.WriteAllText(Path.Combine(framework, "Versions", "A", "Fake"), "fake");

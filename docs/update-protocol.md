@@ -1,71 +1,97 @@
-# RhythmHub 更新协议（v1 草案）
+# RhythmHub 更新协议（v2）
 
-本文档定义 RhythmHub 启动器与静态更新源（CDN / 对象存储）之间的约定，以及本地安装目录结构。
-设计依据见项目计划书；与计划书的差异在于**所有路径都按 `gameId` 区分**，为多游戏管理预留。
+本文档定义 RhythmHub 启动器、游戏仓库 CI、本仓库发布工作流与静态更新源（S3 + CloudFront）之间的约定。
+
+v2 与计划书的主要差异：
+
+- **游戏文件按版本平铺存放**，不打 zip。这样既能按版本追溯，也能做文件级增量更新：只下载与已安装版本不同的文件。
+- 所有路径都按 `gameId` 区分，支持多游戏。
 
 ## 1. 标识符
 
 | 名称 | 示例 | 规则 |
 |---|---|---|
-| `gameId` | `majdataplay`、`ourtaiko` | 小写 ASCII 字母数字、`-`、`_`、`.`；用作目录名 |
-| `platform` | `win-x64`、`osx-arm64`、`osx-x64` | .NET RID 风格 |
+| `gameId` | `MajdataPlay`、`OurTaikoPlay` | ASCII 字母数字及 `.-_+`；就是 S3 上的顶层目录名，区分大小写 |
+| `platform` | `Windows`、`MacOS` | `Windows` = x64；`MacOS` = Apple Silicon（不支持 Intel Mac） |
 | `channel` | `stable` | 首版仅 `stable` |
-| `version` | `1.2.0`、`1.2.0-beta.1` | 同上字符集；比较时取数字主体 |
+| `version` | `1.2.0`、`1.2.0-beta.1` | 必须以数字开头（避免与 `stable.json` 等频道文件重名），≤ 64 字符 |
 
-客户端会拒绝任何含路径分隔符或 `..` 的标识符（它们来自网络，会被拼进本地路径）。
+客户端会拒绝任何不合规的标识符（它们来自网络，会被拼进本地路径和 URL）。
 
-## 1.1 下载与续传
-
-- 版本 zip 必须支持 HTTP Range，并返回强 `ETag`（或 `Last-Modified`）。
-- 续传请求带 `Range: bytes=N-` 与 `If-Range: <ETag>`；服务器返回 206 时追加，返回 200（文件已变化或不支持 Range）时丢弃旧的部分文件从头下载。拼接后的文件仍须通过 SHA-256 校验。
-- 网络错误、超时（30 秒无数据）、429/503 自动重试最多 4 次，指数退避（尊重 `Retry-After`）；404/410 不重试。
-
-## 2. 云端目录
+## 2. S3 目录
 
 ```text
-{feedBase}/
-└── game/
-    └── {gameId}/
-        └── {platform}/
-            ├── {channel}.json                    # 频道清单，短缓存
-            └── releases/{version}/game.zip       # 不可变，长缓存
+{feedBase}/                                   # https://distrib.sparkbarry.com/
+└── {gameId}/
+    └── {platform}/
+        ├── stable.json                       # 频道指针（签名）  Cache-Control: no-cache
+        ├── {version}.json                    # 版本清单（签名）  immutable
+        ├── {version}.unsigned.json           # 游戏 CI 上传的未签名清单，仅供发布工作流使用
+        └── {version}/                        # 游戏 build 原样平铺    immutable
+            ├── MajdataPlay.exe …             # Windows：build 压缩包里的内容
+            └── MajdataPlay.app/…             # macOS：签名、公证后的 .app
 ```
 
-- `releases/` 下的文件发布后**永不覆盖**；`Cache-Control: public, max-age=31536000, immutable`。
-- `{channel}.json` 使用短缓存或 revalidation；客户端请求时带 `Cache-Control: no-cache`。
-- 发布顺序：先上传 zip 并确认可访问，最后替换 `{channel}.json`。
-- Launcher 自身的 Velopack feed 放在 `launcher/{platform}/`，布局以 `vpk` 实际输出为准（阶段 C）。
+- URL 中每一段路径都做百分号编码（空格、`+`、中文等都安全）。清单里只有相对路径，**不含域名**，换 CDN 域名不需要重新签名。
+- `{version}/` 与 `{version}.json` 发布后**永不修改**：`Cache-Control: public, max-age=31536000, immutable`。
+- `stable.json` 必须设为 `no-cache`（或很短的 max-age），客户端请求时也带 `Cache-Control: no-cache`。
+- S3 本身不支持自定义域名 HTTPS，前面需要 CloudFront。CloudFront 需支持 Range 请求（默认支持）。
+- 缺失的对象在私有桶上会返回 403，客户端按“不存在”处理。
 
-## 3. 频道清单
+## 3. 频道指针 `stable.json`
 
 ```json
 {
-  "schemaVersion": 1,
-  "gameId": "majdataplay",
+  "schemaVersion": 2,
+  "gameId": "MajdataPlay",
+  "platform": "MacOS",
   "channel": "stable",
-  "platform": "osx-arm64",
-  "version": "1.1.0",
-  "minimumLauncherVersion": "0.1.0",
-  "releaseNotesUrl": "https://updates.example.com/public/release-notes/majdataplay/1.1.0.md",
-  "package": {
-    "url": "https://updates.example.com/game/majdataplay/osx-arm64/releases/1.1.0/game.zip",
-    "sizeBytes": 428730142,
-    "sha256": "<64 位小写 hex>",
-    "installedSizeBytes": 912345678
-  },
-  "entrypoint": "MajdataPlay.app",
-  "signature": { "algorithm": "Ed25519", "keyId": "release-key-2026", "value": "<base64>" }
+  "version": "1.2.0",
+  "manifestSha256": "<{version}.json 文件字节的 SHA-256，64 位小写 hex>",
+  "signature": { "algorithm": "Ed25519", "keyId": "release-2026", "value": "<base64>" }
 }
 ```
 
-客户端校验（`ManifestClient.Validate`）：
+替换它就是**发布**；把它指回一个旧版本就是**服务端回滚**。客户端只要发现指针版本或 `manifestSha256` 与本地已安装版本不同，就视为有可用版本，因此指向旧版本也会被当作一次“更新”。
 
-- `schemaVersion == 1`；`gameId` / `platform` / `channel` 与请求一致。
-- `package.url` 必须为 HTTPS（仅回环地址允许 HTTP，供本地开发）。
-- `sha256` 为 64 位 hex；`sizeBytes > 0`。
-- `entrypoint` 是单个文件名或 bundle 名（Windows 为 `.exe`，macOS 为 `.app`），不含路径。
-- `minimumLauncherVersion` 高于当前启动器版本时报 `LauncherTooOld`，不下载。
-- 签名必须有效（见下节），**签名校验先于其他任何字段被使用**。
+## 4. 版本清单 `{version}.json`
+
+```json
+{
+  "schemaVersion": 2,
+  "gameId": "MajdataPlay",
+  "platform": "MacOS",
+  "version": "1.2.0",
+  "entrypoint": "MajdataPlay.app",
+  "minimumLauncherVersion": "0.1.0",
+  "releaseNotesUrl": "https://…/1.2.0.md",
+  "files": [
+    { "path": "MajdataPlay.app/Contents/MacOS/MajdataPlay", "size": 123456, "sha256": "…", "mode": 493 },
+    { "path": "MajdataPlay.app/Contents/Info.plist", "size": 1024, "sha256": "…", "mode": 420 }
+  ],
+  "symlinks": [
+    { "path": "MajdataPlay.app/Contents/Frameworks/X.framework/Versions/Current", "target": "A" }
+  ],
+  "directories": [ "MajdataPlay.app/Contents/PlugIns" ],
+  "signature": { … }
+}
+```
+
+- `files[].path` 同时也是对象键 `{gameId}/{platform}/{version}/{path}` 的后缀。
+- `mode` 是 Unix 权限位（0–0o777，不允许 setuid/setgid）。Windows build 不带此字段。
+- **符号链接、权限位、空目录无法存成 S3 对象**，所以记录在清单里，由客户端重建。上传时必须用
+  `aws s3 sync --no-follow-symlinks`，否则符号链接指向的内容会被重复上传（客户端会忽略这些多余对象，但浪费空间）。
+- `directories` 只列没有任何子项的空目录，其余目录由文件路径隐含。
+
+客户端校验（`ManifestClient`）：
+
+1. 指针：签名有效；`gameId`、`platform`、`channel` 与请求一致。
+2. 清单：文件字节的 SHA-256 必须等于指针里的 `manifestSha256`，签名有效，`version` 与指针一致。
+3. 路径：相对路径、`/` 分隔，不含 `..`、`.`、空段、`\`、`:`、控制字符、`<>"|?*`，段末不能是空格或 `.`，
+   不能是 Windows 保留名（`CON`、`AUX`、`COM1` 等），不能位于 `.rhythmhub/` 下。
+   所有路径（不区分大小写）不得重复；任何条目不得位于符号链接之下；符号链接目标必须是相对路径，且不能指出版本根目录。
+4. `entrypoint` 必须是顶层文件（Windows `.exe`）或顶层 bundle（macOS `.app`），且确实在 `files` 中。
+5. `minimumLauncherVersion` 高于当前启动器版本时报 `LauncherTooOld`，不下载任何文件。
 
 ### 签名
 
@@ -73,31 +99,48 @@
 |---|---|
 | 算法 | Ed25519（RFC 8032），`signature.algorithm` 必须为 `"Ed25519"` |
 | 签名内容 | 收到的 JSON 去掉顶层 `signature` 成员后，按 RFC 8785 (JCS) 规范化得到的 UTF-8 字节 |
-| 数字 | 清单中只允许 ±2^53 以内的整数；出现小数、指数或超范围整数时拒绝（避免 JCS 数字格式化分歧） |
+| 数字 | 只允许 ±2^53 以内的整数；出现小数、指数或超范围整数时拒绝（避免 JCS 数字格式化分歧） |
 | 编码 | `signature.value` 为 64 字节签名的标准 base64；公钥为 32 字节原始公钥的 base64 |
 | 信任 | 客户端只信任编译进启动器的 `keyId → 公钥` 表（`ReleaseKeys.cs`）；清单里不携带公钥，未知 `keyId` 直接拒绝 |
-| 校验对象 | 对**收到的原始字节**解析后校验，而不是对反序列化后的模型重新序列化，因此清单中任何多余字段也受签名保护 |
+| 校验对象 | 对**收到的原始字节**解析后校验，而不是对反序列化后的模型重新序列化，因此任何多余字段也受签名保护 |
+
+私钥只存放在本仓库的 CI Secret（`RHYTHMHUB_SIGNING_KEY`），游戏仓库不持有私钥。
 
 密钥轮换：生成新密钥对 → 新启动器版本同时内置新旧公钥 → 等该版本普及后改用新 `keyId` 签名 →
-确认无已发布清单使用旧 `keyId` 后，在之后的启动器版本中移除旧公钥。私钥只存放在 CI Secret（`RHYTHMHUB_SIGNING_KEY`）。
+确认没有在用的清单仍使用旧 `keyId` 后，在之后的启动器版本中移除旧公钥。
 
 Debug 构建可以用环境变量 `RHYTHMHUB_DEV_PUBLIC_KEY=keyId=base64公钥` 额外信任一把本地测试密钥；Release 构建不读取该变量。
 
-### 版本判定
+## 5. 发布流程
 
-频道清单是权威来源：只要清单版本 ≠ 本地 `activeVersion`，即视为“有可用版本”。
-因此把清单重新指向旧版即可完成服务端紧急回滚。
+```mermaid
+flowchart TD
+  A[游戏仓库 CI 构建] --> B[macOS: 苹果签名 / 公证 / staple]
+  A --> C[Windows: 解压 build]
+  B --> D["rhythmhub-release stage → {version}.unsigned.json"]
+  C --> D
+  D --> E["aws s3 sync --no-follow-symlinks → {gameId}/{platform}/{version}/"]
+  E --> F["上传 {version}.unsigned.json"]
+  F --> G[本仓库发布工作流（手动触发）]
+  G --> H["同步该版本到本地，rhythmhub-release publish 逐个校验文件"]
+  H --> I["上传签名的 {version}.json"]
+  I --> J["最后上传签名的 stable.json → 正式发布"]
+```
 
-## 4. 安装包
+1. **游戏 CI**（MajdataPlay、OurTaikoPlay 各自的仓库）：
+   - 构建；macOS 版完成签名、公证、staple **之后**再进入下一步。
+   - `rhythmhub-release stage --game MajdataPlay --platform MacOS --version 1.2.0 --input <build 目录> --entrypoint MajdataPlay.app --out 1.2.0.unsigned.json`
+     （`--input` 是直接包含 `.exe` 或 `.app` 的目录。）
+   - `aws s3 sync <build 目录> s3://<bucket>/MajdataPlay/MacOS/1.2.0/ --no-follow-symlinks --cache-control "public, max-age=31536000, immutable"`
+   - `aws s3 cp 1.2.0.unsigned.json s3://<bucket>/MajdataPlay/MacOS/1.2.0.unsigned.json`
+2. **本仓库发布工作流**：
+   - `aws s3 sync s3://<bucket>/MajdataPlay/MacOS/1.2.0/ feed/MajdataPlay/MacOS/1.2.0/`，并下载 `1.2.0.unsigned.json`。
+   - `rhythmhub-release publish --feed feed --game MajdataPlay --platform MacOS --version 1.2.0 --key-id release-2026`：
+     逐个核对已上传文件的大小与 SHA-256，不一致则中止；然后生成签名的 `1.2.0.json` 和 `stable.json`。
+   - 先上传 `1.2.0.json`（immutable），确认可访问后再上传 `stable.json`（no-cache）。
+3. **服务端回滚**：对已发布过的版本再跑一次 `publish`。工具发现 `{version}.json` 已签名，就只重新生成 `stable.json` 指向它。
 
-- Windows：Unity Player 目录直接打 zip，根目录含 `{Name}.exe`、`UnityPlayer.dll`、`{Name}_Data/`。
-- macOS：签名、公证、staple **之后**再打 zip，根目录为 `{Name}.app`。
-  zip 必须保留 Unix 权限位与符号链接（`tools/RhythmHub.ReleaseTool pack` 或 `ditto -c -k`）。
-- 解压时拒绝：绝对路径、`..` 穿越、指向包外的符号链接、设备/FIFO 等特殊文件、超过
-  `installedSizeBytes × 1.1`（未声明时 8 GB）的解压体积。
-- 声明了 `installedSizeBytes` 时，解压后普通文件总字节数必须与之完全相等。
-
-## 5. 本地目录
+## 6. 本地目录
 
 ```text
 {installRoot}/                        # macOS: ~/Library/Application Support/RhythmHub
@@ -108,13 +151,35 @@ Debug 构建可以用环境变量 `RHYTHMHUB_DEV_PUBLIC_KEY=keyId=base64公钥` 
         ├── versions/
         │   └── {version}/
         │       ├── MajdataPlay.app | MajdataPlay.exe …
-        │       └── .rhythmhub/release.json
-        ├── downloads/{version}.zip.partial | {version}.zip
+        │       └── .rhythmhub/
+        │           ├── manifest.json  # 安装时的签名清单原文，用于下次增量比对
+        │           └── release.json
+        ├── downloads/{version}/       # 内容寻址：{sha256} 已校验对象，{sha256}.partial 下载中
         ├── staging/{uuid}/
         ├── health/health.json         # 游戏写入的启动健康标记
         ├── current.json
         └── pending.json
 ```
+
+### 更新过程
+
+1. **检查**：读指针 → 读清单 → 校验。用当前版本和回滚目标版本的 `manifest.json` 估算需要下载的字节数。
+2. **准备对象**（`downloads/{version}/`，每个不同的 SHA-256 存一份）：
+   - 已安装版本中有相同哈希的文件：复制过来（APFS 上是写时复制克隆，几乎不占空间），**重新计算哈希**，
+     匹配才采用；本地文件损坏则改为下载。
+   - 其余文件并行下载（默认 6 路，大文件优先），完成后校验 SHA-256，匹配才改名为正式对象。
+3. **组装**：在 `staging/{uuid}` 中按清单建目录、放文件（只用一次的对象直接移动，多次使用的复制）、
+   设置权限位，最后创建符号链接（保证不会有文件经由符号链接写出）。
+4. **检查**：入口存在，平台结构检查通过，写入 `.rhythmhub/`。
+5. **提交**：移动到 `versions/{version}` → 原子替换 `current.json`（提交点）→ 删除 `downloads/{version}`、清理旧版本。
+
+### 下载与续传
+
+- 版本路径不可变、每个对象下载后都校验哈希，因此续传直接用 `Range: bytes=N-`，不需要 ETag。
+  续传后哈希不对时，丢弃并完整重下一次；第二次仍不对则报 `HashMismatch`，说明服务器上的文件本身有问题。
+- 网络错误、超时（30 秒无数据）、429/503 自动重试，最多 4 次，指数退避（尊重 `Retry-After`）；404/403/410 不重试。
+
+### 状态文件
 
 `current.json`：
 
@@ -129,42 +194,30 @@ Debug 构建可以用环境变量 `RHYTHMHUB_DEV_PUBLIC_KEY=keyId=base64公钥` 
 ```
 
 - 写入方式：同目录临时文件 → flush 到磁盘 → rename 覆盖。替换 `current.json` 即为安装提交点。
-- 安装流程：下载到 `.partial` → SHA-256 校验 → 改名 `.zip` → 解压到 `staging/{uuid}` →
-  检查入口与平台结构 → 移动到 `versions/{version}` → 提交 `current.json` → 删除 zip、清理旧版本。
 - 始终保留 `activeVersion` 与 `previousGoodVersion`，其余版本在安装后清理。
 - `previousGoodVersion` 只会是**成功启动过**的版本：安装新版时，若当前版本从未通过启动健康检查，则保留原来的
   `previousGoodVersion` 作为回滚目标（首个安装的版本例外）。回滚后被放弃的版本不再作为回滚目标。
+- 存档在 Unity `Application.persistentDataPath`，不在 `versions/` 下，启动器不碰。
 
 `pending.json` 记录进行中的更新，**从不作为已安装的依据**：
 
 ```json
-{
-  "schemaVersion": 1,
-  "version": "1.1.0",
-  "sha256": "…",
-  "packageUrl": "https://…/game.zip",
-  "sizeBytes": 428730142,
-  "stage": "Downloading | Downloaded | Installing",
-  "etag": "\"abc\"",
-  "lastModified": "Sun, 01 Nov 2026 10:00:00 GMT",
-  "updatedAt": "2026-11-01T10:00:00Z"
-}
+{ "schemaVersion": 2, "version": "1.2.0", "manifestSha256": "…", "stage": "Downloading | Downloaded | Installing", "updatedAt": "…" }
 ```
 
 启动时恢复（`GameUpdateService.RecoverAsync`），在持有单实例锁后执行：
 
 | 情况 | 处理 |
 |---|---|
-| `Installing` 且 `current.json` 已指向该版本 | 提交已完成，只差清理：删除 zip 与 `pending.json` |
-| `Installing` / `Downloaded` 且已校验的 zip 还在 | 回到 `Downloaded`，下次直接安装、不重新下载 |
-| `.partial` 还在 | 回到 `Downloading`，下次带 `If-Range` 续传 |
-| 其余 | 删除 `pending.json` |
+| `Installing` 且 `current.json` 已指向该版本 | 提交已完成，只差清理：删除 `pending.json` |
+| `Installing` 但未提交 | 组装时部分对象已被移走 → 回到 `Downloading`，下次只补齐缺的对象 |
+| `downloads/{version}/` 已不存在 | 删除 `pending.json` |
+| 其余 | 保留，下次继续 |
 
-之后清空 `staging/`、删除 `current.json` 未引用的版本目录，以及 `downloads/` 中 `pending.json` 未记录的文件。
-清单指向别的版本或换了 hash 时，旧的部分下载会被丢弃。
-- 存档在 Unity `Application.persistentDataPath`，不在 `versions/` 下，启动器不触碰。
+之后清空 `staging/`，删除 `current.json` 未引用的版本目录，以及 `downloads/` 中 `pending.json` 未记录的内容。
+频道指向别的版本或清单变了时，旧的下载会被丢弃。
 
-## 6. 启动健康检查
+## 7. 启动健康检查
 
 启动游戏时，启动器生成一次性 nonce，并通过环境变量传给游戏进程（macOS 用 `open -n --env`）：
 
@@ -193,7 +246,7 @@ Debug 构建可以用环境变量 `RHYTHMHUB_DEV_PUBLIC_KEY=keyId=base64公钥` 
 尚未接入标记的游戏在 `games.json` 中设 `"healthCheck": false`：进程活过宽限期即视为 Healthy（较弱的判定）。
 接入后改为 `true`。启动器不会自动回滚，只提示，由用户决定。
 
-## 7. 本地开发
+## 8. 本地开发
 
 | 环境变量 | 作用 |
 |---|---|

@@ -8,12 +8,12 @@ Windows / macOS 桌面启动器，负责节奏游戏（MajdataPlay、OurTaiko �
 ```text
 src/
   RhythmHub.Launcher/   Avalonia UI（MVVM），组合根，games.json 游戏目录
-  RhythmHub.Updater/    平台无关更新核心：清单、下载、SHA-256、安全解压、事务化安装、回滚
+  RhythmHub.Updater/    平台无关更新核心：签名清单、逐文件增量下载、SHA-256、事务化组装安装、回滚
   RhythmHub.Platform/   Windows / macOS 差异：默认目录、启动、进程检测、包结构检查
 tests/
   RhythmHub.Updater.Tests/
 tools/
-  RhythmHub.ReleaseTool/  打包 Unity 构建、生成频道清单；生成本地测试用假游戏
+  RhythmHub.ReleaseTool/  stage（游戏 CI 生成文件清单）、publish（校验并签名发布）、keygen、fake-game
 docs/
   update-protocol.md    更新协议与本地目录约定
 ```
@@ -28,7 +28,7 @@ dotnet test
 dotnet run --project src/RhythmHub.Launcher
 ```
 
-### 本地假 CDN 跑通完整流程
+### 本地模拟 S3 跑通完整流程
 
 ```bash
 T="dotnet run --project tools/RhythmHub.ReleaseTool --"
@@ -37,10 +37,11 @@ T="dotnet run --project tools/RhythmHub.ReleaseTool --"
 $T keygen --out /tmp/rhythmhub-dev.key          # 记下输出的 public key
 export RHYTHMHUB_SIGNING_KEY=$(cat /tmp/rhythmhub-dev.key)
 
-# 2. 生成一个假游戏并打包、签名为 1.0.0
-$T fake-game --platform osx-arm64 --name FakeGame --out /tmp/fake-v1 --label v1
-$T pack --game majdataplay --platform osx-arm64 --version 1.0.0 --key-id dev-local \
-  --input /tmp/fake-v1 --entrypoint FakeGame.app --base-url http://127.0.0.1:8787/ --out dev-cdn
+# 2. 生成假游戏；stage 相当于游戏 CI（--copy-to 代替 aws s3 sync），publish 相当于本仓库的发布工作流
+$T fake-game --platform MacOS --name FakeGame --out /tmp/fake-v1 --label v1
+$T stage --game MajdataPlay --platform MacOS --version 1.0.0 --input /tmp/fake-v1 \
+  --entrypoint FakeGame.app --out /tmp/1.0.0.unsigned.json --copy-to dev-cdn
+$T publish --feed dev-cdn --game MajdataPlay --platform MacOS --version 1.0.0 --key-id dev-local
 
 # 3. 起一个静态服务器
 python3 -m http.server 8787 --bind 127.0.0.1 --directory dev-cdn
@@ -51,8 +52,8 @@ RHYTHMHUB_DEV_PUBLIC_KEY="dev-local=<上面的 public key>" \
   dotnet run --project src/RhythmHub.Launcher
 ```
 
-再用 `pack --version 1.1.0` 发布新版测试升级；`fake-game --crash true` 生成一个启动即崩溃的版本，可测试“恢复上一版本”。
-假游戏会写健康标记，测试时可把 `games.json` 里对应游戏的 `healthCheck` 改为 `true`。
+再用另一个版本号 `stage` + `publish` 测试增量更新；`fake-game --crash true` 生成一个启动即崩溃的版本，可测试“恢复上一版本”。
+对旧版本再跑一次 `publish` 就是服务端回滚。
 
 ### 发布签名密钥
 
@@ -66,6 +67,7 @@ RHYTHMHUB_DEV_PUBLIC_KEY="dev-local=<上面的 public key>" \
 
 ## 进度
 
-- [x] 阶段 A：多游戏数据模型、清单获取与校验、全量下载、SHA-256、安全解压、版本目录与 `current.json`、启动、基础 UI、日志
+- [x] 阶段 A：多游戏数据模型、清单获取与校验、下载、SHA-256、版本目录与 `current.json`、启动、基础 UI、日志
 - [x] 阶段 B：Manifest Ed25519 签名（RFC 8785）、Range/If-Range 续传与重试、`pending.json` 中断恢复、安装大小校验、单实例锁、启动健康标记与回滚提示
-- [ ] 阶段 C：Velopack 自更新、CI、代码签名 / 公证、R2 发布
+- [x] 协议 v2：S3 上按版本平铺文件、签名的频道指针 + 文件清单、文件级增量更新（计划书 V1.1）
+- [ ] 阶段 C：Velopack 自更新、CI、代码签名 / 公证、S3 + CloudFront 发布

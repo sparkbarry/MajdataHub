@@ -5,5 +5,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="RhythmHub.Updater.Tests" />
+    <InternalsVisibleTo Include="RhythmHub.ReleaseTool" />
   </ItemGroup>
 </Project>

@@ -1,9 +1,8 @@
-using System.IO.Compression;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
-using RhythmHub.Updater;
 using RhythmHub.Updater.Models;
 using RhythmHub.Updater.Security;
 
@@ -15,34 +14,6 @@ internal sealed class TempDir : IDisposable
     public void Dispose() => Directory.Delete(Path, recursive: true);
 }
 
-internal static class Zips
-{
-    public sealed record Entry(string Name, string Content = "", int UnixType = 0x8000, int Mode = 0b110_100_100);
-
-    public static byte[] Build(params Entry[] entries)
-    {
-        using var ms = new MemoryStream();
-        using (var zip = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
-        {
-            foreach (var e in entries)
-            {
-                var entry = zip.CreateEntry(e.Name);
-                entry.ExternalAttributes = (e.UnixType | e.Mode) << 16;
-                using var s = entry.Open();
-                s.Write(Encoding.UTF8.GetBytes(e.Content));
-            }
-        }
-        return ms.ToArray();
-    }
-
-    public static string Write(string dir, params Entry[] entries)
-    {
-        var path = System.IO.Path.Combine(dir, $"{Guid.NewGuid():N}.zip");
-        File.WriteAllBytes(path, Build(entries));
-        return path;
-    }
-}
-
 internal static class TestKeys
 {
     public const string KeyId = "test-key";
@@ -50,47 +21,119 @@ internal static class TestKeys
     public static IReadOnlyDictionary<string, string> Trusted => new Dictionary<string, string> { [KeyId] = Pair.Public };
 }
 
-/// <summary>In-memory static feed keyed by absolute URL, with strong ETags and Range / If-Range support.</summary>
-internal sealed class FakeFeed : HttpMessageHandler
+/// <summary>Build content for one release: files (with Unix modes), symlinks and empty directories.</summary>
+internal sealed class Build(string entrypoint = "Game.app")
+{
+    public string Entrypoint { get; } = entrypoint;
+    public Dictionary<string, (string Content, int Mode)> Files { get; } = new(StringComparer.Ordinal);
+    public Dictionary<string, string> Links { get; } = new(StringComparer.Ordinal);
+    public List<string> EmptyDirs { get; } = [];
+
+    public Build File(string path, string content, int mode = 0b110_100_100)
+    {
+        Files[path] = (content, mode);
+        return this;
+    }
+
+    public Build Link(string path, string target)
+    {
+        Links[path] = target;
+        return this;
+    }
+
+    public Build Dir(string path)
+    {
+        EmptyDirs.Add(path);
+        return this;
+    }
+
+    public Build Clone()
+    {
+        var b = new Build(Entrypoint);
+        foreach (var (k, v) in Files) b.Files[k] = v;
+        foreach (var (k, v) in Links) b.Links[k] = v;
+        b.EmptyDirs.AddRange(EmptyDirs);
+        return b;
+    }
+
+    public void WriteTo(string root)
+    {
+        foreach (var (path, (content, mode)) in Files)
+        {
+            var full = System.IO.Path.Combine(root, path);
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(full)!);
+            System.IO.File.WriteAllText(full, content);
+            if (!OperatingSystem.IsWindows()) System.IO.File.SetUnixFileMode(full, (UnixFileMode)mode);
+        }
+        foreach (var dir in EmptyDirs) Directory.CreateDirectory(System.IO.Path.Combine(root, dir));
+        foreach (var (path, target) in Links)
+        {
+            var full = System.IO.Path.Combine(root, path);
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(full)!);
+            System.IO.File.CreateSymbolicLink(full, target);
+        }
+    }
+}
+
+/// <summary>In-memory S3: flat objects by URL, Range support, signed pointer + manifest per release.</summary>
+internal sealed class FakeFeed : HttpMessageHandler, IDisposable
 {
     public static readonly Uri Base = new("https://cdn.test/");
-    private readonly Dictionary<string, (byte[] Body, string ETag)> _files = new();
+    private readonly Dictionary<string, byte[]> _objects = new();
+    private readonly TempDir _work = new();
 
-    public List<(Uri Uri, long? RangeFrom, string? IfRange)> Log { get; } = [];
+    public List<(Uri Uri, long? RangeFrom)> Log { get; } = [];
 
-    /// <summary>One-shot fault: the next package response breaks after this many body bytes.</summary>
+    /// <summary>One-shot fault: the next response for a path ending in <see cref="DropPathSuffix"/> breaks after this many bytes.</summary>
     public long? DropConnectionAfter { get; set; }
 
-    public void Put(string relative, byte[] content) =>
-        _files[new Uri(Base, relative).AbsoluteUri] = (content, $"\"{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(content))[..16]}\"");
+    public string DropPathSuffix { get; set; } = "big.bin";
 
-    public GameManifest Publish(string gameId, string platform, string version, byte[] zip,
-        string entrypoint = "Game.app", string? sha = null, string? minLauncher = null, long? installedSize = null,
-        bool sign = true)
+    public IEnumerable<(Uri Uri, long? RangeFrom)> FileRequests =>
+        Log.Where(r => !r.Uri.AbsolutePath.EndsWith(".json", StringComparison.Ordinal));
+
+    public void Put(Uri uri, byte[] content) => _objects[uri.AbsoluteUri] = content;
+
+    public void Remove(Uri uri) => _objects.Remove(uri.AbsoluteUri);
+
+    public Uri FileUri(string game, string platform, string version, string path) =>
+        FeedLayout.FileUri(Base, game, platform, version, path);
+
+    public ReleaseManifest Publish(string game, string platform, string version, Build build,
+        string? minLauncher = null, bool sign = true)
     {
-        var rel = $"game/{gameId}/{platform}/releases/{version}/game.zip";
-        Put(rel, zip);
-        var manifest = new GameManifest
-        {
-            SchemaVersion = 1,
-            GameId = gameId,
-            Channel = "stable",
-            Platform = platform,
-            Version = version,
-            MinimumLauncherVersion = minLauncher,
-            Package = new ManifestPackage
-            {
-                Url = new Uri(Base, rel).AbsoluteUri,
-                SizeBytes = zip.Length,
-                Sha256 = sha ?? Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(zip)),
-                InstalledSizeBytes = installedSize,
-            },
-            Entrypoint = entrypoint,
-        };
-        var node = JsonSerializer.SerializeToNode(manifest, Json)!.AsObject();
-        if (sign) ManifestSigning.Sign(node, TestKeys.Pair.Private, TestKeys.KeyId);
-        Put($"game/{gameId}/{platform}/stable.json", Encoding.UTF8.GetBytes(node.ToJsonString()));
+        var dir = System.IO.Path.Combine(_work.Path, game, platform, version);
+        build.WriteTo(dir);
+        var manifest = ReleaseManifestBuilder.FromDirectoryAsync(dir, game, platform, version, build.Entrypoint, default)
+            .GetAwaiter().GetResult() with { MinimumLauncherVersion = minLauncher };
+        foreach (var f in manifest.Files)
+            Put(FileUri(game, platform, version, f.Path), System.IO.File.ReadAllBytes(System.IO.Path.Combine(dir, f.Path)));
+
+        var manifestBytes = SignedBytes(manifest, sign);
+        Put(FeedLayout.ManifestUri(Base, game, platform, version), manifestBytes);
+        Point(game, platform, version, manifestBytes, sign);
         return manifest;
+    }
+
+    public void Point(string game, string platform, string version, byte[] manifestBytes, bool sign = true)
+    {
+        var pointer = new ChannelPointer
+        {
+            SchemaVersion = 2,
+            GameId = game,
+            Platform = platform,
+            Channel = "stable",
+            Version = version,
+            ManifestSha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(manifestBytes)),
+        };
+        Put(FeedLayout.ChannelUri(Base, game, platform, "stable"), SignedBytes(pointer, sign));
+    }
+
+    public static byte[] SignedBytes<T>(T value, bool sign = true)
+    {
+        var node = JsonSerializer.SerializeToNode(value, Json)!.AsObject();
+        if (sign) ManifestSigning.Sign(node, TestKeys.Pair.Private, TestKeys.KeyId);
+        return Encoding.UTF8.GetBytes(node.ToJsonString());
     }
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -101,29 +144,32 @@ internal sealed class FakeFeed : HttpMessageHandler
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
         var range = request.Headers.Range?.Ranges.FirstOrDefault()?.From;
-        var ifRange = request.Headers.IfRange?.EntityTag?.Tag;
-        Log.Add((request.RequestUri!, range, ifRange));
-        if (!_files.TryGetValue(request.RequestUri!.AbsoluteUri, out var file))
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+        lock (Log) Log.Add((request.RequestUri!, range));
+        if (!_objects.TryGetValue(request.RequestUri!.AbsoluteUri, out var body))
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Forbidden)); // what S3 says for missing keys
 
-        var partial = range is { } from && (ifRange is null || ifRange == file.ETag);
-        var offset = partial ? range!.Value : 0;
-        if (offset > file.Body.Length)
+        var offset = range ?? 0;
+        if (offset > body.Length)
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.RequestedRangeNotSatisfiable));
 
-        Stream body = new MemoryStream(file.Body, (int)offset, file.Body.Length - (int)offset);
-        if (DropConnectionAfter is { } cut && request.RequestUri.AbsolutePath.EndsWith(".zip"))
+        Stream stream = new MemoryStream(body, (int)offset, body.Length - (int)offset);
+        if (DropConnectionAfter is { } cut && request.RequestUri.AbsolutePath.EndsWith(DropPathSuffix, StringComparison.Ordinal))
         {
             DropConnectionAfter = null;
-            body = new BrokenStream(body, cut);
+            stream = new BrokenStream(stream, cut);
         }
-        var content = new StreamContent(body);
-        content.Headers.ContentLength = file.Body.Length - offset;
-        var response = new HttpResponseMessage(partial ? HttpStatusCode.PartialContent : HttpStatusCode.OK) { Content = content };
-        response.Headers.ETag = System.Net.Http.Headers.EntityTagHeaderValue.Parse(file.ETag);
-        if (partial)
-            content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(offset, file.Body.Length - 1, file.Body.Length);
+        var content = new StreamContent(stream);
+        content.Headers.ContentLength = body.Length - offset;
+        var response = new HttpResponseMessage(range is null ? HttpStatusCode.OK : HttpStatusCode.PartialContent) { Content = content };
+        if (range is not null)
+            content.Headers.ContentRange = new ContentRangeHeaderValue(offset, body.Length - 1, body.Length);
         return Task.FromResult(response);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) _work.Dispose();
+        base.Dispose(disposing);
     }
 
     /// <summary>Yields <paramref name="limit"/> bytes, then fails like a dropped TCP connection.</summary>
@@ -152,13 +198,18 @@ internal sealed class FakeFeed : HttpMessageHandler
 internal sealed class FakePlatform : IPackageVerifier
 {
     public bool Running { get; set; }
-    public Task VerifyPlatformPackageAsync(string unpackedDirectory, string entrypoint, CancellationToken ct) => Task.CompletedTask;
+    public bool RejectPackage { get; set; }
+
+    public Task VerifyPlatformPackageAsync(string unpackedDirectory, string entrypoint, CancellationToken ct) =>
+        RejectPackage ? throw new UpdateException(UpdateErrorCode.InvalidPackage, "rejected by test") : Task.CompletedTask;
+
     public Task<bool> IsGameRunningAsync(string versionDirectory, string entrypoint, CancellationToken ct) => Task.FromResult(Running);
 }
 
 internal static class Factory
 {
-    public const string Platform = "osx-arm64";
+    public const string Game = "demo";
+    public const string Platform = "MacOS";
 
     public static UpdaterOptions Options(string root, string launcher = "1.0.0") => new()
     {
@@ -171,23 +222,19 @@ internal static class Factory
     };
 
     public static GameUpdateService Service(string root, FakeFeed feed, FakePlatform? platform = null, int maxAttempts = 4) =>
-        new("demo", Options(root), new HttpClient(feed), platform ?? new FakePlatform(), NullLoggerFactory.Instance,
+        new(Game, Options(root), new HttpClient(feed), platform ?? new FakePlatform(), NullLoggerFactory.Instance,
             new DownloadService(new HttpClient(feed), NullLogger<DownloadService>.Instance)
             {
                 MaxAttempts = maxAttempts,
                 InitialBackoff = TimeSpan.Zero,
             });
 
-    /// <summary>A zip big enough that a mid-body cut leaves a meaningful partial file.</summary>
-    public static byte[] BigGameZip(string label) => Zips.Build(
-        new Zips.Entry("Game.app/Contents/Info.plist", "<plist/>"),
-        new Zips.Entry("Game.app/Contents/MacOS/Game", label, Mode: 0b111_101_101),
-        new Zips.Entry("Game.app/Contents/Resources/data.bin", RandomText(200_000)));
+    public static Build GameBuild(string label) => new Build()
+        .File("Game.app/Contents/Info.plist", "<plist/>")
+        .File("Game.app/Contents/MacOS/Game", "#!/bin/sh\n# " + label, mode: 0b111_101_101)
+        .File("Game.app/Contents/Resources/data.bin", "data-" + label);
 
-    private static string RandomText(int length) =>
-        Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(length))[..length];
-
-    public static byte[] GameZip(string label) => Zips.Build(
-        new Zips.Entry("Game.app/Contents/Info.plist", "<plist/>"),
-        new Zips.Entry("Game.app/Contents/MacOS/Game", label, Mode: 0b111_101_101));
+    /// <summary>Adds a file big enough that a mid-body cut leaves a meaningful partial.</summary>
+    public static Build WithBigFile(this Build b, string seed) =>
+        b.File("Game.app/Contents/Resources/big.bin", seed + new string('x', 200_000));
 }

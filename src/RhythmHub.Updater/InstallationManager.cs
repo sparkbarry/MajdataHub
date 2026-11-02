@@ -4,39 +4,31 @@ using RhythmHub.Updater.Models;
 namespace RhythmHub.Updater;
 
 /// <summary>
-/// Turns a verified zip into <c>versions/{v}</c> and commits it via current.json.
+/// Assembles <c>versions/{v}</c> from the verified objects in <c>downloads/{v}/</c> and commits it via current.json.
 /// The previously active version is never touched before the commit.
 /// </summary>
 public sealed class InstallationManager(GameInstallLayout layout, VersionRepository versions, ILogger<InstallationManager> logger)
 {
-    /// <summary>Hard cap against zip bombs when the manifest does not declare an installed size.</summary>
-    private const long DefaultMaxUnpackedBytes = 8L * 1024 * 1024 * 1024;
-
     /// <param name="verifyPackage">Platform check run on the staged directory before it is moved into place.</param>
-    public async Task InstallAsync(GameRelease release, string zipPath,
-        Func<string, string, CancellationToken, Task> verifyPackage, CancellationToken ct)
+    public async Task InstallAsync(GameRelease release, Func<string, string, CancellationToken, Task> verifyPackage,
+        CancellationToken ct)
     {
         layout.EnsureCreated();
         var staging = Path.Combine(layout.StagingDirectory, Guid.NewGuid().ToString("N"));
         try
         {
-            var limit = release.InstalledSizeBytes is { } declared ? declared + declared / 10 : DefaultMaxUnpackedBytes;
-            logger.LogInformation("Extracting {Zip} to {Staging}", zipPath, staging);
-            var unpacked = await ArchiveExtractor.ExtractAsync(zipPath, staging, limit, ct);
-            if (release.InstalledSizeBytes is { } expected && unpacked != expected)
-                throw new UpdateException(UpdateErrorCode.InvalidPackage,
-                    $"Package unpacked to {unpacked} bytes, manifest declares {expected}.");
-
-            var entry = Path.Combine(staging, release.Entrypoint);
-            if (!File.Exists(entry) && !Directory.Exists(entry))
-                throw new UpdateException(UpdateErrorCode.InvalidPackage, $"Entrypoint '{release.Entrypoint}' missing from package.");
+            logger.LogInformation("Assembling {Game} {Version} in {Staging}", layout.GameId, release.Version, staging);
+            Assemble(release.Manifest, layout.ObjectsDirectory(release.Version), staging, ct);
             await verifyPackage(staging, release.Entrypoint, ct);
 
-            await AtomicFile.WriteJsonAsync(Path.Combine(staging, ".rhythmhub", "release.json"), new InstalledReleaseInfo
+            var meta = Path.Combine(staging, ManifestPaths.ReservedDirectory);
+            Directory.CreateDirectory(meta);
+            await File.WriteAllBytesAsync(Path.Combine(meta, "manifest.json"), release.ManifestBytes, ct);
+            await AtomicFile.WriteJsonAsync(Path.Combine(meta, "release.json"), new InstalledReleaseInfo
             {
                 Version = release.Version,
                 Entrypoint = release.Entrypoint,
-                Sha256 = release.Sha256,
+                ManifestSha256 = release.ManifestSha256,
                 InstalledAt = DateTimeOffset.UtcNow,
             }, ct);
 
@@ -66,13 +58,62 @@ public sealed class InstallationManager(GameInstallLayout layout, VersionReposit
             }, ct);
             logger.LogInformation("Activated {Game} {Version} (previous {Previous})", layout.GameId, release.Version, previous);
 
-            TryDelete(zipPath);
+            TryDeleteDirectory(layout.ObjectsDirectory(release.Version));
             await PruneAsync(ct);
         }
         finally
         {
             if (Directory.Exists(staging)) TryDeleteDirectory(staging);
         }
+    }
+
+    /// <summary>
+    /// Lays out every manifest entry under <paramref name="staging"/>. Objects used by a single path are moved (cheap on
+    /// one volume); shared ones are copied. Symlinks are created last so nothing is ever written through one.
+    /// </summary>
+    internal static void Assemble(ReleaseManifest manifest, string objects, string staging, CancellationToken ct)
+    {
+        Directory.CreateDirectory(staging);
+        foreach (var dir in manifest.Directories)
+            Directory.CreateDirectory(ManifestPaths.Under(staging, dir));
+
+        var remainingUses = manifest.Files.Where(f => f.Size > 0).GroupBy(f => f.Sha256).ToDictionary(g => g.Key, g => g.Count());
+        foreach (var file in manifest.Files)
+        {
+            ct.ThrowIfCancellationRequested();
+            var target = ManifestPaths.Under(staging, file.Path);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            if (file.Size == 0)
+            {
+                File.WriteAllBytes(target, []);
+            }
+            else
+            {
+                var source = Path.Combine(objects, file.Sha256);
+                if (!File.Exists(source) || new FileInfo(source).Length != file.Size)
+                    throw new UpdateException(UpdateErrorCode.DownloadIncomplete, $"Missing verified data for '{file.Path}'.");
+                if (--remainingUses[file.Sha256] == 0) File.Move(source, target);
+                else File.Copy(source, target);
+            }
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(target, (UnixFileMode)(file.Mode ?? 0b110_100_100));
+        }
+
+        foreach (var link in manifest.Symlinks)
+        {
+            var path = ManifestPaths.Under(staging, link.Path);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            if (OperatingSystem.IsWindows())
+            {
+                // Windows builds have no symlinks; creating one would need developer mode, so refuse clearly.
+                throw new UpdateException(UpdateErrorCode.InvalidPackage, $"Symlink '{link.Path}' is not supported on Windows.");
+            }
+            File.CreateSymbolicLink(path, link.Target);
+        }
+
+        var entry = Path.Combine(staging, manifest.Entrypoint);
+        if (!File.Exists(entry) && !Directory.Exists(entry))
+            throw new UpdateException(UpdateErrorCode.InvalidPackage, $"Entrypoint '{manifest.Entrypoint}' missing after assembly.");
     }
 
     public async Task RollbackAsync(CancellationToken ct)
@@ -93,7 +134,7 @@ public sealed class InstallationManager(GameInstallLayout layout, VersionReposit
         logger.LogInformation("Rolled back {Game} from {From} to {To}", layout.GameId, state.ActiveVersion, previous);
     }
 
-    /// <summary>Keep the active and previous good versions; drop everything else, plus stale staging/download leftovers.</summary>
+    /// <summary>Keep the active and previous good versions; drop everything else, plus stale staging leftovers.</summary>
     public async Task PruneAsync(CancellationToken ct)
     {
         var state = await versions.LoadAsync(ct);
@@ -109,15 +150,12 @@ public sealed class InstallationManager(GameInstallLayout layout, VersionReposit
         }
     }
 
-    private void TryDelete(string path)
-    {
-        try { File.Delete(path); }
-        catch (IOException ex) { logger.LogWarning(ex, "Could not delete {Path}", path); }
-    }
-
     private void TryDeleteDirectory(string path)
     {
         try { Directory.Delete(path, recursive: true); }
+        catch (DirectoryNotFoundException)
+        {
+        }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             logger.LogWarning(ex, "Could not delete {Path}", path);

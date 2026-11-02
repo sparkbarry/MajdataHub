@@ -10,8 +10,7 @@ public sealed class MacOSPlatform : IGamePlatform
 {
     public string PlatformId => RuntimeInformation.OSArchitecture switch
     {
-        Architecture.Arm64 => "osx-arm64",
-        Architecture.X64 => "osx-x64",
+        Architecture.Arm64 => "MacOS",
         var other => throw new PlatformNotSupportedException($"macOS on {other} is not supported."),
     };
 

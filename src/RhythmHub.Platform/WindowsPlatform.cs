@@ -10,7 +10,7 @@ public sealed class WindowsPlatform : IGamePlatform
 {
     public string PlatformId => RuntimeInformation.OSArchitecture switch
     {
-        Architecture.X64 => "win-x64",
+        Architecture.X64 => "Windows",
         var other => throw new PlatformNotSupportedException($"Windows on {other} is not supported yet."),
     };
 

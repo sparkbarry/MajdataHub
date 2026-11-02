@@ -4,7 +4,7 @@ namespace RhythmHub.Platform;
 
 public interface IGamePlatform : IPackageVerifier
 {
-    /// <summary>win-x64, osx-arm64 or osx-x64; matches the feed directory name.</summary>
+    /// <summary>Feed directory name: "Windows" (x64) or "MacOS" (Apple Silicon; Intel Macs are not supported).</summary>
     string PlatformId { get; }
 
     /// <summary>Per-user, writable root for games, downloads and logs. No admin rights needed.</summary>

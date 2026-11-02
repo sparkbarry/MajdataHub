@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using RhythmHub.Updater.Models;
 
@@ -12,6 +13,8 @@ public interface IPackageVerifier
 
 public sealed class GameUpdateService : IGameUpdateService
 {
+    private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(100);
+
     private readonly UpdaterOptions _options;
     private readonly GameInstallLayout _layout;
     private readonly VersionRepository _versions;
@@ -61,29 +64,26 @@ public sealed class GameUpdateService : IGameUpdateService
             var state = await _versions.LoadAsync(ct);
             if (pending is not null)
             {
-                var completed = _layout.CompletedDownloadPath(pending.Version);
-                var partial = _layout.PartialDownloadPath(pending.Version);
+                var objects = _layout.ObjectsDirectory(pending.Version);
                 if (pending.Stage == PendingStage.Installing && state.ActiveVersion == pending.Version)
                 {
                     _logger.LogInformation("Recovery: {Version} was committed before the interruption", pending.Version);
-                    File.Delete(completed);
                     await ClearPendingAsync();
                 }
-                else if (pending.Stage is PendingStage.Installing or PendingStage.Downloaded && File.Exists(completed))
+                else if (pending.Stage == PendingStage.Installing)
                 {
-                    _logger.LogInformation("Recovery: {Version} is downloaded but not installed", pending.Version);
-                    await SavePendingAsync(pending with { Stage = PendingStage.Downloaded }, ct);
-                }
-                else if (File.Exists(partial))
-                {
-                    _logger.LogInformation("Recovery: {Version} download can resume from {Bytes} bytes",
-                        pending.Version, new FileInfo(partial).Length);
+                    // Assembly moves objects out of the store, so some may be gone; the next download refills them.
+                    _logger.LogInformation("Recovery: {Version} install was interrupted before commit", pending.Version);
                     await SavePendingAsync(pending with { Stage = PendingStage.Downloading }, ct);
                 }
-                else
+                else if (!Directory.Exists(objects))
                 {
                     _logger.LogInformation("Recovery: nothing left of pending {Version}", pending.Version);
                     await ClearPendingAsync();
+                }
+                else
+                {
+                    _logger.LogInformation("Recovery: {Version} download can continue", pending.Version);
                 }
             }
             // Drops half-built staging dirs and any version directory current.json does not reference.
@@ -98,80 +98,58 @@ public sealed class GameUpdateService : IGameUpdateService
 
     public async Task<GameRelease?> CheckAsync(CancellationToken ct)
     {
-        var manifest = await _manifests.FetchAsync(_options, GameId, ct);
+        var pointer = await _manifests.FetchPointerAsync(_options, GameId, ct);
         var installed = await GetInstalledAsync(ct);
+        var installedSha = installed is null ? null : (await _versions.LoadReleaseInfoAsync(installed.Version, ct))?.ManifestSha256;
         _logger.LogInformation("{Game}: installed {Installed}, channel {Channel} has {Remote}",
-            GameId, installed?.Version ?? "none", _options.Channel, manifest.Version);
-        // Any difference counts: the channel manifest is authoritative, so an older version there is a deliberate rollback.
-        return installed?.Version == manifest.Version ? null : GameRelease.FromManifest(manifest);
+            GameId, installed?.Version ?? "none", _options.Channel, pointer.Version);
+        // Any difference counts: the channel is authoritative, so pointing it at an older version is a deliberate rollback.
+        if (installed?.Version == pointer.Version && installedSha == pointer.ManifestSha256) return null;
+
+        var (manifest, bytes) = await _manifests.FetchReleaseAsync(_options, pointer, ct);
+        var reusable = await ReusableShasAsync(ct);
+        var downloadBytes = manifest.Files.Where(f => f.Size > 0 && !reusable.Contains(f.Sha256))
+            .DistinctBy(f => f.Sha256).Sum(f => f.Size);
+        return new GameRelease(GameId, manifest.Version, manifest.Platform, pointer.ManifestSha256, manifest, bytes, downloadBytes);
     }
 
-    /// <summary>Bytes already on disk for <paramref name="release"/> from an earlier, interrupted attempt.</summary>
+    /// <summary>Bytes already fetched for <paramref name="release"/> by an earlier, interrupted attempt.</summary>
     public async Task<long> GetResumableBytesAsync(GameRelease release, CancellationToken ct)
     {
         if (await GetPendingAsync(ct) is not { } pending || !pending.IsFor(release)) return 0;
-        if (pending.Stage != PendingStage.Downloading) return release.SizeBytes;
-        var partial = _layout.PartialDownloadPath(release.Version);
-        return File.Exists(partial) ? new FileInfo(partial).Length : 0;
+        var dir = _layout.ObjectsDirectory(release.Version);
+        return Directory.Exists(dir) ? Directory.GetFiles(dir).Sum(f => new FileInfo(f).Length) : 0;
     }
 
+    /// <summary>
+    /// Fills <c>downloads/{v}/</c> with one verified object per distinct file hash: copied from an installed version
+    /// when possible, otherwise downloaded. Safe to call again after any interruption.
+    /// </summary>
     public async Task DownloadAsync(GameRelease release, IProgress<DownloadProgress>? progress, CancellationToken ct)
     {
         await _gate.WaitAsync(ct);
         try
         {
             _layout.EnsureCreated();
-            var completed = _layout.CompletedDownloadPath(release.Version);
-            var partial = _layout.PartialDownloadPath(release.Version);
-
             var pending = await GetPendingAsync(ct);
             if (pending is not null && !pending.IsFor(release))
             {
                 _logger.LogInformation("Abandoning pending {Old} in favour of {New}", pending.Version, release.Version);
-                DeleteDownloads(pending.Version);
+                DeleteDirectory(_layout.ObjectsDirectory(pending.Version));
                 pending = null;
             }
+            pending ??= new PendingOperation { Version = release.Version, ManifestSha256 = release.ManifestSha256 };
+            await SavePendingAsync(pending with { Stage = PendingStage.Downloading }, ct);
 
-            if (pending?.Stage is PendingStage.Downloaded or PendingStage.Installing && File.Exists(completed))
-            {
-                _logger.LogInformation("Reusing verified download {Path}", completed);
-                progress?.Report(new DownloadProgress(release.SizeBytes, release.SizeBytes));
-                return;
-            }
+            var objects = _layout.ObjectsDirectory(release.Version);
+            Directory.CreateDirectory(objects);
+            var needed = release.Manifest.Files.Where(f => f.Size > 0).DistinctBy(f => f.Sha256)
+                .Where(f => !IsVerifiedObject(release.Version, f)).ToList();
 
-            if (pending is null) DeleteDownloads(release.Version);
-            EnsureDiskSpace(release, File.Exists(partial) ? new FileInfo(partial).Length : 0);
+            EnsureDiskSpace(needed.Sum(f => f.Size));
+            var toFetch = await ReuseLocalFilesAsync(release.Version, needed, progress, ct);
+            await FetchAsync(release, toFetch, progress, ct);
 
-            pending ??= new PendingOperation
-            {
-                Version = release.Version,
-                Sha256 = release.Sha256,
-                PackageUrl = release.PackageUrl.AbsoluteUri,
-                SizeBytes = release.SizeBytes,
-                Stage = PendingStage.Downloading,
-            };
-            await SavePendingAsync(pending, ct);
-
-            var checkpoint = pending.ETag is null && pending.LastModified is null
-                ? null
-                : new DownloadCheckpoint(pending.ETag, pending.LastModified);
-            await _downloads.DownloadAsync(release.PackageUrl, partial, release.SizeBytes, checkpoint,
-                async cp =>
-                {
-                    pending = pending with { ETag = cp.ETag, LastModified = cp.LastModified };
-                    await SavePendingAsync(pending, CancellationToken.None);
-                },
-                progress, ct);
-
-            var actual = await FileHasher.ComputeSha256Async(partial, ct);
-            if (actual != release.Sha256)
-            {
-                DeleteDownloads(release.Version);
-                await ClearPendingAsync();
-                throw new UpdateException(UpdateErrorCode.HashMismatch,
-                    $"Package hash mismatch (expected {release.Sha256}, got {actual}).");
-            }
-            File.Move(partial, completed, overwrite: true);
             await SavePendingAsync(pending with { Stage = PendingStage.Downloaded }, ct);
         }
         finally
@@ -185,22 +163,21 @@ public sealed class GameUpdateService : IGameUpdateService
         await _gate.WaitAsync(ct);
         try
         {
-            var completed = _layout.CompletedDownloadPath(release.Version);
-            if (await GetPendingAsync(ct) is not { Stage: PendingStage.Downloaded } pending || !pending.IsFor(release) ||
-                !File.Exists(completed))
-                throw new UpdateException(UpdateErrorCode.DownloadIncomplete, "Package has not been downloaded.");
+            if (await GetPendingAsync(ct) is not { Stage: PendingStage.Downloaded } pending || !pending.IsFor(release))
+                throw new UpdateException(UpdateErrorCode.DownloadIncomplete, "Release has not been downloaded.");
             await EnsureNotRunningAsync(ct);
 
             await SavePendingAsync(pending with { Stage = PendingStage.Installing }, ct);
             try
             {
-                await _installer.InstallAsync(release, completed, _platform.VerifyPlatformPackageAsync, ct);
+                await _installer.InstallAsync(release, _platform.VerifyPlatformPackageAsync, ct);
             }
             catch
             {
-                // Not committed: the verified zip is still there, so the next attempt skips the download.
+                // Not committed. Assembly may have consumed objects, so the next attempt re-runs the download step,
+                // which only refills what is missing.
                 if ((await _versions.LoadAsync(CancellationToken.None)).ActiveVersion != release.Version)
-                    await SavePendingAsync(pending with { Stage = PendingStage.Downloaded }, CancellationToken.None);
+                    await SavePendingAsync(pending with { Stage = PendingStage.Downloading }, CancellationToken.None);
                 throw;
             }
             await ClearPendingAsync();
@@ -249,6 +226,124 @@ public sealed class GameUpdateService : IGameUpdateService
         _logger.LogInformation("{Game} {Version} launch outcome {Outcome}", GameId, version, outcome);
     }
 
+    /// <summary>Hash → existing file in an installed version (active first, then the rollback target).</summary>
+    private async Task<Dictionary<string, string>> LocalSourcesAsync(CancellationToken ct)
+    {
+        var state = await _versions.LoadAsync(ct);
+        var sources = new Dictionary<string, string>();
+        foreach (var version in new[] { state.ActiveVersion, state.PreviousGoodVersion })
+        {
+            if (version is null || await _versions.LoadManifestAsync(version, ct) is not { } manifest) continue;
+            var root = _layout.VersionDirectory(version);
+            foreach (var f in manifest.Files.Where(f => f.Size > 0))
+            {
+                if (sources.ContainsKey(f.Sha256)) continue;
+                var path = Path.Combine(root, f.Path);
+                if (File.Exists(path) && new FileInfo(path).Length == f.Size) sources[f.Sha256] = path;
+            }
+        }
+        return sources;
+    }
+
+    private async Task<HashSet<string>> ReusableShasAsync(CancellationToken ct) => [.. (await LocalSourcesAsync(ct)).Keys];
+
+    /// <summary>Copies unchanged files from installed versions into the object store; returns what still has to be fetched.</summary>
+    private async Task<List<ManifestFile>> ReuseLocalFilesAsync(string version, List<ManifestFile> needed,
+        IProgress<DownloadProgress>? progress, CancellationToken ct)
+    {
+        var sources = await LocalSourcesAsync(ct);
+        var candidates = needed.Where(f => sources.ContainsKey(f.Sha256)).ToList();
+        var total = candidates.Sum(f => f.Size);
+        long done = 0;
+        var remaining = needed.Where(f => !sources.ContainsKey(f.Sha256)).ToList();
+        foreach (var file in candidates)
+        {
+            ct.ThrowIfCancellationRequested();
+            var tmp = _layout.ObjectPath(version, file.Sha256) + ".copy";
+            File.Copy(sources[file.Sha256], tmp, overwrite: true);
+            // The installed copy could have been modified or damaged; only trust what hashes correctly.
+            if (await FileHasher.ComputeSha256Async(tmp, ct) == file.Sha256)
+            {
+                File.Move(tmp, _layout.ObjectPath(version, file.Sha256), overwrite: true);
+            }
+            else
+            {
+                _logger.LogWarning("Local copy of {Path} is damaged; downloading it instead", file.Path);
+                File.Delete(tmp);
+                remaining.Add(file);
+            }
+            done += file.Size;
+            progress?.Report(new DownloadProgress(done, total, DownloadStage.ReusingLocalFiles));
+        }
+        if (candidates.Count > 0)
+            _logger.LogInformation("Reused {Count} unchanged files ({Bytes} bytes) from installed versions", candidates.Count, total);
+        return remaining;
+    }
+
+    private async Task FetchAsync(GameRelease release, List<ManifestFile> files, IProgress<DownloadProgress>? progress,
+        CancellationToken ct)
+    {
+        var total = files.Sum(f => f.Size);
+        long done = files.Sum(f => PartialLength(release.Version, f.Sha256));
+        long lastReportTicks = 0;
+        var clock = Stopwatch.StartNew();
+        void OnBytes(long delta)
+        {
+            var now = Interlocked.Add(ref done, delta);
+            var last = Interlocked.Read(ref lastReportTicks);
+            if (clock.Elapsed.Ticks - last >= ProgressInterval.Ticks &&
+                Interlocked.CompareExchange(ref lastReportTicks, clock.Elapsed.Ticks, last) == last)
+                progress?.Report(new DownloadProgress(now, total));
+        }
+
+        _logger.LogInformation("Downloading {Count} files ({Bytes} bytes) for {Game} {Version}",
+            files.Count, total, GameId, release.Version);
+        progress?.Report(new DownloadProgress(done, total));
+
+        // Largest first, so a slow big file starts early instead of trailing at the end.
+        await Parallel.ForEachAsync(files.OrderByDescending(f => f.Size),
+            new ParallelOptions { MaxDegreeOfParallelism = _options.MaxParallelDownloads, CancellationToken = ct },
+            async (file, token) => await FetchOneAsync(release, file, OnBytes, token));
+
+        progress?.Report(new DownloadProgress(Interlocked.Read(ref done), total));
+    }
+
+    private async Task FetchOneAsync(GameRelease release, ManifestFile file, Action<long> onBytes, CancellationToken ct)
+    {
+        var uri = FeedLayout.FileUri(_options.FeedBaseUri, GameId, release.Platform, release.Version, file.Path);
+        var partial = _layout.PartialObjectPath(release.Version, file.Sha256);
+        for (var attempt = 1; ; attempt++)
+        {
+            await _downloads.DownloadAsync(uri, partial, file.Size, onBytes, ct);
+            var actual = await FileHasher.ComputeSha256Async(partial, ct);
+            if (actual == file.Sha256)
+            {
+                File.Move(partial, _layout.ObjectPath(release.Version, file.Sha256), overwrite: true);
+                return;
+            }
+            onBytes(-file.Size);
+            File.Delete(partial);
+            // One clean retry covers a corrupt resumed prefix; a second mismatch means the server copy is wrong.
+            if (attempt == 2)
+                throw new UpdateException(UpdateErrorCode.HashMismatch,
+                    $"'{file.Path}' does not match the manifest (expected {file.Sha256}, got {actual}).");
+            _logger.LogWarning("Hash mismatch for {Path}; downloading it again from scratch", file.Path);
+        }
+    }
+
+    private bool IsVerifiedObject(string version, ManifestFile f)
+    {
+        // Objects are only renamed into place after their hash matched.
+        var path = _layout.ObjectPath(version, f.Sha256);
+        return File.Exists(path) && new FileInfo(path).Length == f.Size;
+    }
+
+    private long PartialLength(string version, string sha)
+    {
+        var path = _layout.PartialObjectPath(version, sha);
+        return File.Exists(path) ? new FileInfo(path).Length : 0;
+    }
+
     private async Task EnsureNotRunningAsync(CancellationToken ct)
     {
         if (await GetInstalledAsync(ct) is { } installed &&
@@ -256,10 +351,10 @@ public sealed class GameUpdateService : IGameUpdateService
             throw new UpdateException(UpdateErrorCode.GameRunning, "Close the game before updating.");
     }
 
-    private void EnsureDiskSpace(GameRelease release, long alreadyDownloaded)
+    /// <summary>Objects end up moved into the new version, so peak use is roughly the objects still to be stored.</summary>
+    private void EnsureDiskSpace(long bytesToStore)
     {
-        var installed = release.InstalledSizeBytes ?? release.SizeBytes * 2;
-        var required = release.SizeBytes - alreadyDownloaded + installed + _options.DiskSafetyMarginBytes;
+        var required = bytesToStore + _options.DiskSafetyMarginBytes;
         var root = Path.GetPathRoot(Path.GetFullPath(_layout.GameRoot));
         if (root is null) return;
         var free = new DriveInfo(root).AvailableFreeSpace;
@@ -277,24 +372,22 @@ public sealed class GameUpdateService : IGameUpdateService
         return Task.CompletedTask;
     }
 
-    private void DeleteDownloads(string version)
+    private static void DeleteDirectory(string path)
     {
-        File.Delete(_layout.PartialDownloadPath(version));
-        File.Delete(_layout.CompletedDownloadPath(version));
+        if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
     }
 
     /// <summary>Anything in downloads/ that pending.json does not account for is garbage.</summary>
     private void CleanStrayDownloads(PendingOperation? pending)
     {
         if (!Directory.Exists(_layout.DownloadsDirectory)) return;
-        var keep = pending is null
-            ? new HashSet<string>()
-            : [_layout.PartialDownloadPath(pending.Version), _layout.CompletedDownloadPath(pending.Version)];
-        foreach (var file in Directory.GetFiles(_layout.DownloadsDirectory))
+        var keep = pending is null ? null : _layout.ObjectsDirectory(pending.Version);
+        foreach (var entry in Directory.EnumerateFileSystemEntries(_layout.DownloadsDirectory).ToList())
         {
-            if (keep.Contains(file)) continue;
-            _logger.LogInformation("Removing stray download {File}", file);
-            File.Delete(file);
+            if (entry == keep) continue;
+            _logger.LogInformation("Removing stray download {Entry}", entry);
+            if (Directory.Exists(entry)) Directory.Delete(entry, recursive: true);
+            else File.Delete(entry);
         }
     }
 }

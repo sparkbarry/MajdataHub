@@ -13,6 +13,19 @@ public sealed class VersionRepository(GameInstallLayout layout)
     public Task<InstalledReleaseInfo?> LoadReleaseInfoAsync(string version, CancellationToken ct) =>
         AtomicFile.ReadJsonAsync<InstalledReleaseInfo>(layout.ReleaseInfoPath(version), ct);
 
+    /// <summary>The manifest an installed version was built from, or null if it is missing or unreadable.</summary>
+    public async Task<ReleaseManifest?> LoadManifestAsync(string version, CancellationToken ct)
+    {
+        try
+        {
+            return await AtomicFile.ReadJsonAsync<ReleaseManifest>(layout.ManifestCopyPath(version), ct);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Returns the active version only if its directory and release info are present.</summary>
     public async Task<InstalledGame?> GetActiveAsync(CancellationToken ct)
     {

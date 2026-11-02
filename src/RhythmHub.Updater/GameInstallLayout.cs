@@ -13,9 +13,13 @@ public sealed class GameInstallLayout(string installRoot, string gameId)
     public string HealthFilePath => Path.Combine(GameRoot, "health", "health.json");
 
     public string VersionDirectory(string version) => Path.Combine(VersionsDirectory, SafeName(version));
-    public string ReleaseInfoPath(string version) => Path.Combine(VersionDirectory(version), ".rhythmhub", "release.json");
-    public string PartialDownloadPath(string version) => Path.Combine(DownloadsDirectory, $"{SafeName(version)}.zip.partial");
-    public string CompletedDownloadPath(string version) => Path.Combine(DownloadsDirectory, $"{SafeName(version)}.zip");
+    public string ReleaseInfoPath(string version) => Path.Combine(VersionDirectory(version), ManifestPaths.ReservedDirectory, "release.json");
+    public string ManifestCopyPath(string version) => Path.Combine(VersionDirectory(version), ManifestPaths.ReservedDirectory, "manifest.json");
+
+    /// <summary>Content-addressed store for one version's download: <c>downloads/{v}/{sha256}</c>.</summary>
+    public string ObjectsDirectory(string version) => Path.Combine(DownloadsDirectory, SafeName(version));
+    public string ObjectPath(string version, string sha256) => Path.Combine(ObjectsDirectory(version), sha256);
+    public string PartialObjectPath(string version, string sha256) => ObjectPath(version, sha256) + ".partial";
 
     public void EnsureCreated()
     {

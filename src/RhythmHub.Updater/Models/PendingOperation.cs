@@ -2,13 +2,13 @@ namespace RhythmHub.Updater.Models;
 
 public enum PendingStage
 {
-    /// <summary><c>downloads/{v}.zip.partial</c> may hold a prefix of the package.</summary>
+    /// <summary><c>downloads/{v}/</c> holds some verified objects and maybe partial ones.</summary>
     Downloading,
 
-    /// <summary><c>downloads/{v}.zip</c> exists and matched the manifest hash.</summary>
+    /// <summary>Every object the release needs is verified under <c>downloads/{v}/</c>.</summary>
     Downloaded,
 
-    /// <summary>Extraction / move in progress; current.json may or may not have been committed.</summary>
+    /// <summary>Assembling into staging; objects are being moved out, current.json may or may not be committed.</summary>
     Installing,
 }
 
@@ -18,18 +18,11 @@ public enum PendingStage
 /// </summary>
 public sealed record PendingOperation
 {
-    public int SchemaVersion { get; init; } = 1;
+    public int SchemaVersion { get; init; } = 2;
     public required string Version { get; init; }
-    public required string Sha256 { get; init; }
-    public required string PackageUrl { get; init; }
-    public long SizeBytes { get; init; }
+    public required string ManifestSha256 { get; init; }
     public PendingStage Stage { get; init; }
-
-    /// <summary>Validator for If-Range so a resumed download never splices two different files.</summary>
-    public string? ETag { get; init; }
-    public string? LastModified { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
 
-    public bool IsFor(GameRelease release) =>
-        Version == release.Version && Sha256 == release.Sha256 && PackageUrl == release.PackageUrl.AbsoluteUri;
+    public bool IsFor(GameRelease release) => Version == release.Version && ManifestSha256 == release.ManifestSha256;
 }
