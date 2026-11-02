@@ -57,7 +57,7 @@
 | 启动器 Velopack 打包、自更新 | ✅ `v1.0.0` 已发布到 CDN 和 GitHub Release（见 §8）；CDN 与 GitHub 的 Mac 便携包一致，运行后自更新检查正常 |
 | 启动器 macOS 签名公证 | ⏳ 等 MajdataHub 配好 §8.3 的 Apple Secrets；未配置时 Mac 包不签名 |
 | 启动器 Windows 代码签名 | ⏳ 暂不做（安装时会有 SmartScreen 提示） |
-| 启动器内切换 stable / nightly 频道 | ⏳ 未做（目前只读 `games.json` 的 `channel` = stable；两个游戏都还没有 stable，所以 1.0.0 里暂时装不了游戏） |
+| 启动器内切换 stable / nightly 频道 | ✅ v1.0.1 起每个游戏可单独选「稳定版 / 每日构建」，保存在 `{安装根目录}/settings.json`；默认取 `games.json` 的 `channel` |
 | Windows 真机安装测试 | ⏳ 未做 |
 
 ## 1. 总览

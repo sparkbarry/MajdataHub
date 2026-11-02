@@ -100,7 +100,7 @@ internal sealed class FakeFeed : HttpMessageHandler, IDisposable
         FeedLayout.FileUri(Base, game, platform, version, path);
 
     public ReleaseManifest Publish(string game, string platform, string version, Build build,
-        string? minLauncher = null, bool sign = true)
+        string? minLauncher = null, bool sign = true, string channel = "stable")
     {
         var dir = System.IO.Path.Combine(_work.Path, game, platform, version);
         build.WriteTo(dir);
@@ -111,22 +111,23 @@ internal sealed class FakeFeed : HttpMessageHandler, IDisposable
 
         var manifestBytes = SignedBytes(manifest, sign);
         Put(FeedLayout.ManifestUri(Base, game, platform, version), manifestBytes);
-        Point(game, platform, version, manifestBytes, sign);
+        Point(game, platform, version, manifestBytes, sign, channel);
         return manifest;
     }
 
-    public void Point(string game, string platform, string version, byte[] manifestBytes, bool sign = true)
+    public void Point(string game, string platform, string version, byte[] manifestBytes, bool sign = true,
+        string channel = "stable")
     {
         var pointer = new ChannelPointer
         {
             SchemaVersion = 2,
             GameId = game,
             Platform = platform,
-            Channel = "stable",
+            Channel = channel,
             Version = version,
             ManifestSha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(manifestBytes)),
         };
-        Put(FeedLayout.ChannelUri(Base, game, platform, "stable"), SignedBytes(pointer, sign));
+        Put(FeedLayout.ChannelUri(Base, game, platform, channel), SignedBytes(pointer, sign));
     }
 
     public static byte[] SignedBytes<T>(T value, bool sign = true)

@@ -15,7 +15,7 @@ public sealed class GameUpdateService : IGameUpdateService
 {
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(100);
 
-    private readonly UpdaterOptions _options;
+    private UpdaterOptions _options;
     private readonly GameInstallLayout _layout;
     private readonly VersionRepository _versions;
     private readonly InstallationManager _installer;
@@ -41,6 +41,17 @@ public sealed class GameUpdateService : IGameUpdateService
     }
 
     public string GameId { get; }
+
+    /// <summary>
+    /// Channel this game follows (<c>stable</c>, <c>nightly</c>); takes effect on the next <see cref="CheckAsync"/>.
+    /// Switching installs whatever the new channel points at, older or newer.
+    /// </summary>
+    public string Channel
+    {
+        get => _options.Channel;
+        set => _options = _options with { Channel = value };
+    }
+
     public GameInstallLayout Layout => _layout;
     public LaunchHealth Health { get; }
 

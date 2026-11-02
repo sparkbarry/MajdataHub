@@ -36,6 +36,43 @@ public class GameUpdateServiceTests
     }
 
     [Fact]
+    public async Task Switching_channel_installs_what_that_channel_points_at()
+    {
+        using var tmp = new TempDir();
+        using var feed = new FakeFeed();
+        feed.Publish(G, P, "1.0.0", Factory.GameBuild("v1"));
+        feed.Publish(G, P, "1.1.0-abc1234", Factory.GameBuild("nightly"), channel: "nightly");
+        var svc = Factory.Service(tmp.Path, feed);
+
+        await InstallLatestAsync(svc);
+        Assert.Equal("1.0.0", (await svc.GetInstalledAsync(Ct))!.Version);
+
+        svc.Channel = "nightly";
+        await InstallLatestAsync(svc);
+        Assert.Equal("1.1.0-abc1234", (await svc.GetInstalledAsync(Ct))!.Version);
+        Assert.Null(await svc.CheckAsync(Ct));
+
+        // Back to stable goes to the older stable release.
+        svc.Channel = "stable";
+        await InstallLatestAsync(svc);
+        Assert.Equal("1.0.0", (await svc.GetInstalledAsync(Ct))!.Version);
+    }
+
+    [Fact]
+    public async Task Missing_channel_is_reported_as_not_found()
+    {
+        using var tmp = new TempDir();
+        using var feed = new FakeFeed();
+        feed.Publish(G, P, "1.1.0-abc1234", Factory.GameBuild("nightly"), channel: "nightly");
+        var svc = Factory.Service(tmp.Path, feed);
+
+        var ex = await Assert.ThrowsAsync<UpdateException>(() => svc.CheckAsync(Ct));
+        Assert.Equal(UpdateErrorCode.ManifestNotFound, ex.Code);
+        svc.Channel = "nightly";
+        Assert.NotNull(await svc.CheckAsync(Ct));
+    }
+
+    [Fact]
     public async Task Update_downloads_only_changed_files()
     {
         using var tmp = new TempDir();

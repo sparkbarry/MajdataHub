@@ -44,6 +44,8 @@ public sealed partial class GameViewModel : ObservableObject
         Description = entry.Description ?? "";
         _updater = new GameUpdateService(entry.Id, context.Options, context.Http, context.Platform, context.Loggers);
         _logger = context.Loggers.CreateLogger($"Game.{entry.Id}");
+        selectedChannel = ChannelOption.Find(context.Settings.GetChannel(entry.Id, context.Options.Channel));
+        _updater.Channel = selectedChannel.Id;
     }
 
     public string Id { get; }
@@ -52,9 +54,17 @@ public sealed partial class GameViewModel : ObservableObject
     public string Initial => DisplayName[..1];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsBusy), nameof(PrimaryText), nameof(ShowProgress))]
+    [NotifyPropertyChangedFor(nameof(IsBusy), nameof(PrimaryText), nameof(ShowProgress), nameof(CanChangeChannel))]
     [NotifyCanExecuteChangedFor(nameof(PrimaryCommand), nameof(CheckCommand), nameof(CancelCommand), nameof(RollbackCommand))]
     private GameState state;
+
+    public IReadOnlyList<ChannelOption> Channels => ChannelOption.All;
+
+    [ObservableProperty]
+    private ChannelOption selectedChannel;
+
+    /// <summary>Switching mid-download would orphan the transfer, and mid-game the install would be refused.</summary>
+    public bool CanChangeChannel => !IsBusy && State != GameState.Running;
 
     [ObservableProperty]
     private string statusText = "";
@@ -94,6 +104,23 @@ public sealed partial class GameViewModel : ObservableObject
         _ when Installed is not null => "开始游戏",
         _ => "检查更新",
     };
+
+    partial void OnSelectedChannelChanged(ChannelOption value)
+    {
+        if (value is null || _updater.Channel == value.Id) return;
+        _logger.LogInformation("Channel {Old} -> {New}", _updater.Channel, value.Id);
+        _updater.Channel = value.Id;
+        try
+        {
+            _context.Settings.SetChannel(Id, value.Id);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "Could not save the channel choice");
+        }
+        _available = null;
+        _ = CheckAsync();
+    }
 
     public async Task InitializeAsync()
     {
@@ -143,7 +170,7 @@ public sealed partial class GameViewModel : ObservableObject
                     : FormatSize(download);
             SetState(GameState.UpdateAvailable, Installed is null
                 ? $"可安装 {_available.Version}（{size}）"
-                : $"发现新版本 {_available.Version}（{size}）");
+                : $"{SelectedChannel.Label}最新为 {_available.Version}（{size}）");
         });
     }
 
@@ -286,7 +313,9 @@ public sealed partial class GameViewModel : ObservableObject
         catch (UpdateException ex)
         {
             _logger.LogError(ex, "{Step} failed with {Code}", busyState, ex.Code);
-            SetState(GameState.Failed, Describe(ex) + OfflineHint());
+            SetState(GameState.Failed, (ex.Code == UpdateErrorCode.ManifestNotFound
+                ? $"{SelectedChannel.Label}暂时没有发布版本，可以换个更新频道试试"
+                : Describe(ex)) + OfflineHint());
         }
         catch (Exception ex)
         {
