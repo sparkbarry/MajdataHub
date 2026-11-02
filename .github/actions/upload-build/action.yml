@@ -1,0 +1,92 @@
+name: RhythmHub upload build
+description: >-
+  Describes a finished game build (for macOS: already signed and notarized) as an unsigned RhythmHub
+  release manifest and uploads the build, unpacked, to the release bucket. Publishing (signing and
+  switching the channel) is a separate, manual step: the "Publish game release" workflow in MajdataHub.
+  The calling job needs `permissions: id-token: write`.
+
+inputs:
+  game:
+    description: Feed directory, e.g. MajdataPlay or OurTaikoPlay.
+    required: true
+  platform:
+    description: Windows or MacOS.
+    required: true
+  version:
+    description: Release version; must start with a digit, e.g. 1.2.0 or 1.2.0-20261102-abc1234.
+    required: true
+  build-path:
+    description: Directory that directly contains the .exe (Windows) or the .app (macOS).
+    required: true
+  entrypoint:
+    description: MajdataPlay.exe, MajdataPlay.app, ...
+    required: true
+  min-launcher-version:
+    description: Oldest RhythmHub launcher that can run this build.
+    required: false
+    default: ""
+  role-arn:
+    description: IAM role to assume through GitHub OIDC (the AWS_ROLE_ARN variable).
+    required: true
+  bucket:
+    required: false
+    default: sparkbarry-public
+  aws-region:
+    required: false
+    default: ap-northeast-1
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Describe build
+      shell: bash
+      env:
+        TOOL: ${{ github.action_path }}/../../../tools/RhythmHub.ReleaseTool
+        GAME: ${{ inputs.game }}
+        PLATFORM: ${{ inputs.platform }}
+        VERSION: ${{ inputs.version }}
+        BUILD_PATH: ${{ inputs.build-path }}
+        ENTRYPOINT: ${{ inputs.entrypoint }}
+        MIN_LAUNCHER: ${{ inputs.min-launcher-version }}
+      run: |
+        set -euo pipefail
+        args=(stage --game "$GAME" --platform "$PLATFORM" --version "$VERSION"
+              --input "$BUILD_PATH" --entrypoint "$ENTRYPOINT" --out "$RUNNER_TEMP/$VERSION.unsigned.json")
+        if [[ -n "$MIN_LAUNCHER" ]]; then args+=(--min-launcher "$MIN_LAUNCHER"); fi
+        dotnet run --project "$TOOL" -c Release -- "${args[@]}"
+
+    - uses: aws-actions/configure-aws-credentials@v6.3.0
+      with:
+        role-to-assume: ${{ inputs.role-arn }}
+        aws-region: ${{ inputs.aws-region }}
+        role-session-name: rhythmhub-upload-${{ github.run_id }}
+
+    - name: Upload to S3
+      shell: bash
+      env:
+        PREFIX: s3://${{ inputs.bucket }}/${{ inputs.game }}/${{ inputs.platform }}
+        BUCKET: ${{ inputs.bucket }}
+        KEY: ${{ inputs.game }}/${{ inputs.platform }}/${{ inputs.version }}.json
+        VERSION: ${{ inputs.version }}
+        BUILD_PATH: ${{ inputs.build-path }}
+      run: |
+        set -euo pipefail
+        # Published versions are immutable; re-running an unpublished upload is fine.
+        if aws s3api head-object --bucket "$BUCKET" --key "$KEY" >/dev/null 2>&1; then
+          echo "::error::$KEY is already published. Bump the version instead of overwriting a release."
+          exit 1
+        fi
+        # Symlinks, permissions and empty directories travel in the manifest, not as S3 objects.
+        aws s3 sync "$BUILD_PATH" "$PREFIX/$VERSION/" --no-follow-symlinks --only-show-errors \
+          --cache-control "public, max-age=31536000, immutable"
+        aws s3 cp "$RUNNER_TEMP/$VERSION.unsigned.json" "$PREFIX/$VERSION.unsigned.json" \
+          --cache-control "no-cache" --content-type application/json --only-show-errors
+        {
+          echo "### Uploaded ${{ inputs.game }} ${{ inputs.platform }} $VERSION"
+          echo "Not live yet. To release it, run **Publish game release** in sparkbarry/MajdataHub with"
+          echo "game \`${{ inputs.game }}\`, platform \`${{ inputs.platform }}\`, version \`$VERSION\`."
+        } >> "$GITHUB_STEP_SUMMARY"

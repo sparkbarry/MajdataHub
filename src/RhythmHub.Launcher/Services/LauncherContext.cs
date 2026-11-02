@@ -50,7 +50,9 @@ public sealed class LauncherContext : IDisposable
         var http = new HttpClient(new SocketsHttpHandler
         {
             ConnectTimeout = TimeSpan.FromSeconds(15),
-            AutomaticDecompression = System.Net.DecompressionMethods.All,
+            // Never ask for Content-Encoding: game files are checked byte-for-byte against the manifest
+            // and resumed with Range requests, both of which assume the CDN serves the stored bytes.
+            AutomaticDecompression = System.Net.DecompressionMethods.None,
         })
         {
             // Per-request timeouts are handled by cancellation; a whole-download timeout would break slow links.

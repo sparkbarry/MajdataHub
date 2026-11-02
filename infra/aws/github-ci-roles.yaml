@@ -1,0 +1,80 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  RhythmHub CI access to the release bucket via GitHub OIDC (no long-lived keys).
+  One role, shared by the game repositories and MajdataHub, with full access to the bucket only.
+  See docs/update-protocol.md section 5.
+
+Parameters:
+  BucketName:
+    Type: String
+    Default: sparkbarry-public
+    Description: S3 bucket behind distrib.sparkbarry.com.
+  CreateOidcProvider:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: >-
+      An account can hold only one GitHub OIDC provider. Set to false if
+      token.actions.githubusercontent.com already exists under IAM > Identity providers.
+  # These repositories use GitHub's immutable OIDC subjects, which embed numeric owner and repo ids.
+  # The plain "repo:Owner/Name" form is rejected. Check a repository's prefix with:
+  #   gh api repos/<owner>/<name>/actions/oidc/customization/sub
+  PublisherSubject:
+    Type: String
+    Default: repo:sparkbarry@118162831/MajdataHub@973319129
+  MajdataPlaySubject:
+    Type: String
+    Default: repo:TeamMajdata@210497401/MajdataPlay@763747540
+  OurTaikoPlaySubject:
+    Type: String
+    Default: repo:OurTaiko@252237704/OurTaikoPlay@1400725485
+
+Conditions:
+  ShouldCreateOidcProvider: !Equals [!Ref CreateOidcProvider, "true"]
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: ShouldCreateOidcProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+
+  CiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: rhythmhub-ci
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub:
+                  - !Sub ${PublisherSubject}:*
+                  - !Sub ${MajdataPlaySubject}:*
+                  - !Sub ${OurTaikoPlaySubject}:*
+      Policies:
+        - PolicyName: release-bucket-full-access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: s3:*
+                Resource:
+                  - !Sub arn:aws:s3:::${BucketName}
+                  - !Sub arn:aws:s3:::${BucketName}/*
+
+Outputs:
+  CiRoleArn:
+    Description: Put this in the AWS_ROLE_ARN Actions variable of all three repositories.
+    Value: !GetAtt CiRole.Arn

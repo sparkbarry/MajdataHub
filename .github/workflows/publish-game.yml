@@ -1,0 +1,126 @@
+name: Publish game release
+run-name: Publish ${{ inputs.game }} ${{ inputs.platform }} ${{ inputs.version }} to ${{ inputs.channel }}
+
+# Signs an uploaded build and makes it live (docs/update-protocol.md §5).
+# Running it for a version that is already signed only re-points the channel: that is the server-side rollback.
+on:
+  workflow_dispatch:
+    inputs:
+      game:
+        type: choice
+        options: [MajdataPlay, OurTaikoPlay]
+      platform:
+        type: choice
+        options: [Windows, MacOS]
+      version:
+        description: Version uploaded by the game's CI, e.g. 1.2.0
+        type: string
+        required: true
+      channel:
+        type: choice
+        options: [stable]
+        default: stable
+
+permissions:
+  contents: read
+  id-token: write
+
+# One publication per game and platform at a time; never interrupt one halfway.
+concurrency:
+  group: publish-${{ inputs.game }}-${{ inputs.platform }}
+  cancel-in-progress: false
+
+env:
+  BUCKET: sparkbarry-public
+  CDN: https://distrib.sparkbarry.com
+  KEY_ID: rhythmhub-2026
+  GAME: ${{ inputs.game }}
+  PLATFORM: ${{ inputs.platform }}
+  VERSION: ${{ inputs.version }}
+  CHANNEL: ${{ inputs.channel }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ap-northeast-1
+          role-session-name: rhythmhub-publish-${{ github.run_id }}
+
+      - name: Fetch release from S3
+        id: fetch
+        run: |
+          set -euo pipefail
+          base="s3://$BUCKET/$GAME/$PLATFORM"
+          dir="feed/$GAME/$PLATFORM"
+          mkdir -p "$dir"
+          if aws s3 cp "$base/$VERSION.json" "$dir/$VERSION.json" --only-show-errors 2>/dev/null; then
+            echo "already_signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already_signed=false" >> "$GITHUB_OUTPUT"
+            aws s3 cp "$base/$VERSION.unsigned.json" "$dir/$VERSION.unsigned.json" --only-show-errors
+            # Verify exactly what clients will download: the objects as stored.
+            aws s3 sync "$base/$VERSION/" "$dir/$VERSION/" --only-show-errors
+          fi
+
+      - name: Verify files and sign
+        env:
+          RHYTHMHUB_SIGNING_KEY: ${{ secrets.RHYTHMHUB_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$RHYTHMHUB_SIGNING_KEY" ]]; then
+            echo "::error::Secret RHYTHMHUB_SIGNING_KEY is not set."
+            exit 1
+          fi
+          dotnet run --project tools/RhythmHub.ReleaseTool -c Release -- publish \
+            --feed feed --game "$GAME" --platform "$PLATFORM" --version "$VERSION" \
+            --channel "$CHANNEL" --key-id "$KEY_ID"
+
+      - name: Upload manifest, then switch channel
+        env:
+          ALREADY_SIGNED: ${{ steps.fetch.outputs.already_signed }}
+        run: |
+          set -euo pipefail
+          base="s3://$BUCKET/$GAME/$PLATFORM"
+          dir="feed/$GAME/$PLATFORM"
+
+          # wait_for <url> <file>: CloudFront must serve exactly these bytes before the next step.
+          wait_for() {
+            local want got
+            want=$(sha256sum "$2" | cut -d' ' -f1)
+            for _ in $(seq 1 30); do
+              got=$(curl -fsS -H 'Cache-Control: no-cache' "$1?check=$GITHUB_RUN_ID-$RANDOM" | sha256sum | cut -d' ' -f1) || true
+              [[ "$got" == "$want" ]] && return 0
+              sleep 2
+            done
+            echo "::error::$1 is not served correctly through the CDN."
+            return 1
+          }
+
+          if [[ "$ALREADY_SIGNED" != "true" ]]; then
+            aws s3 cp "$dir/$VERSION.json" "$base/$VERSION.json" --only-show-errors \
+              --cache-control "public, max-age=31536000, immutable" --content-type application/json
+          fi
+          wait_for "$CDN/$GAME/$PLATFORM/$VERSION.json" "$dir/$VERSION.json"
+
+          # The commit point for players: from here on launchers see $VERSION.
+          aws s3 cp "$dir/$CHANNEL.json" "$base/$CHANNEL.json" --only-show-errors \
+            --cache-control "no-cache" --content-type application/json
+          wait_for "$CDN/$GAME/$PLATFORM/$CHANNEL.json" "$dir/$CHANNEL.json"
+
+          {
+            echo "### $GAME $PLATFORM $VERSION is live on $CHANNEL"
+            [[ "$ALREADY_SIGNED" == "true" ]] && echo "Re-pointed the channel to an already signed version (rollback)."
+            echo "Channel: $CDN/$GAME/$PLATFORM/$CHANNEL.json"
+          } >> "$GITHUB_STEP_SUMMARY"

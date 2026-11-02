@@ -12,7 +12,8 @@ internal static class ReleaseKeys
 
     private static readonly Dictionary<string, string> Production = new()
     {
-        // ["release-2026"] = "<base64 public key>",
+        // Private half: MajdataHub secret RHYTHMHUB_SIGNING_KEY (offline copy kept by the maintainer).
+        ["rhythmhub-2026"] = "6gDC1TutxgMXd0b4uoP1ZW1zHY1VLJpbCiVMdK7QYJc=",
     };
 
     public static IReadOnlyDictionary<string, string> Load()
