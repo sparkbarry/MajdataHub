@@ -15,6 +15,9 @@ public sealed record UpdaterOptions
 
     public required Version LauncherVersion { get; init; }
 
+    /// <summary>keyId → base64 Ed25519 public key. Manifests not signed by one of these are rejected.</summary>
+    public required IReadOnlyDictionary<string, string> TrustedKeys { get; init; }
+
     /// <summary>Extra free space required on top of package + installed size.</summary>
     public long DiskSafetyMarginBytes { get; init; } = 256L * 1024 * 1024;
 }

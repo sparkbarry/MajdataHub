@@ -10,6 +10,7 @@ public sealed class GameInstallLayout(string installRoot, string gameId)
     public string StagingDirectory => Path.Combine(GameRoot, "staging");
     public string CurrentStatePath => Path.Combine(GameRoot, "current.json");
     public string PendingStatePath => Path.Combine(GameRoot, "pending.json");
+    public string HealthFilePath => Path.Combine(GameRoot, "health", "health.json");
 
     public string VersionDirectory(string version) => Path.Combine(VersionsDirectory, SafeName(version));
     public string ReleaseInfoPath(string version) => Path.Combine(VersionDirectory(version), ".rhythmhub", "release.json");

@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using RhythmHub.Updater;
 using RhythmHub.Updater.Models;
+using RhythmHub.Updater.Security;
 
 namespace RhythmHub.Updater.Tests;
 
@@ -42,17 +43,30 @@ internal static class Zips
     }
 }
 
-/// <summary>In-memory static feed keyed by absolute URL.</summary>
+internal static class TestKeys
+{
+    public const string KeyId = "test-key";
+    public static readonly (string Private, string Public) Pair = ManifestSigning.GenerateKeyPair();
+    public static IReadOnlyDictionary<string, string> Trusted => new Dictionary<string, string> { [KeyId] = Pair.Public };
+}
+
+/// <summary>In-memory static feed keyed by absolute URL, with strong ETags and Range / If-Range support.</summary>
 internal sealed class FakeFeed : HttpMessageHandler
 {
     public static readonly Uri Base = new("https://cdn.test/");
-    private readonly Dictionary<string, byte[]> _files = new();
-    public int Requests { get; private set; }
+    private readonly Dictionary<string, (byte[] Body, string ETag)> _files = new();
 
-    public void Put(string relative, byte[] content) => _files[new Uri(Base, relative).AbsoluteUri] = content;
+    public List<(Uri Uri, long? RangeFrom, string? IfRange)> Log { get; } = [];
+
+    /// <summary>One-shot fault: the next package response breaks after this many body bytes.</summary>
+    public long? DropConnectionAfter { get; set; }
+
+    public void Put(string relative, byte[] content) =>
+        _files[new Uri(Base, relative).AbsoluteUri] = (content, $"\"{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(content))[..16]}\"");
 
     public GameManifest Publish(string gameId, string platform, string version, byte[] zip,
-        string entrypoint = "Game.app", string? sha = null, string? minLauncher = null)
+        string entrypoint = "Game.app", string? sha = null, string? minLauncher = null, long? installedSize = null,
+        bool sign = true)
     {
         var rel = $"game/{gameId}/{platform}/releases/{version}/game.zip";
         Put(rel, zip);
@@ -69,20 +83,69 @@ internal sealed class FakeFeed : HttpMessageHandler
                 Url = new Uri(Base, rel).AbsoluteUri,
                 SizeBytes = zip.Length,
                 Sha256 = sha ?? Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(zip)),
+                InstalledSizeBytes = installedSize,
             },
             Entrypoint = entrypoint,
         };
-        Put($"game/{gameId}/{platform}/stable.json",
-            JsonSerializer.SerializeToUtf8Bytes(manifest, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        var node = JsonSerializer.SerializeToNode(manifest, Json)!.AsObject();
+        if (sign) ManifestSigning.Sign(node, TestKeys.Pair.Private, TestKeys.KeyId);
+        Put($"game/{gameId}/{platform}/stable.json", Encoding.UTF8.GetBytes(node.ToJsonString()));
         return manifest;
     }
 
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+    };
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
-        Requests++;
-        if (!_files.TryGetValue(request.RequestUri!.AbsoluteUri, out var body))
+        var range = request.Headers.Range?.Ranges.FirstOrDefault()?.From;
+        var ifRange = request.Headers.IfRange?.EntityTag?.Tag;
+        Log.Add((request.RequestUri!, range, ifRange));
+        if (!_files.TryGetValue(request.RequestUri!.AbsoluteUri, out var file))
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
-        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(body) });
+
+        var partial = range is { } from && (ifRange is null || ifRange == file.ETag);
+        var offset = partial ? range!.Value : 0;
+        if (offset > file.Body.Length)
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.RequestedRangeNotSatisfiable));
+
+        Stream body = new MemoryStream(file.Body, (int)offset, file.Body.Length - (int)offset);
+        if (DropConnectionAfter is { } cut && request.RequestUri.AbsolutePath.EndsWith(".zip"))
+        {
+            DropConnectionAfter = null;
+            body = new BrokenStream(body, cut);
+        }
+        var content = new StreamContent(body);
+        content.Headers.ContentLength = file.Body.Length - offset;
+        var response = new HttpResponseMessage(partial ? HttpStatusCode.PartialContent : HttpStatusCode.OK) { Content = content };
+        response.Headers.ETag = System.Net.Http.Headers.EntityTagHeaderValue.Parse(file.ETag);
+        if (partial)
+            content.Headers.ContentRange = new System.Net.Http.Headers.ContentRangeHeaderValue(offset, file.Body.Length - 1, file.Body.Length);
+        return Task.FromResult(response);
+    }
+
+    /// <summary>Yields <paramref name="limit"/> bytes, then fails like a dropped TCP connection.</summary>
+    private sealed class BrokenStream(Stream inner, long limit) : Stream
+    {
+        private long _read;
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (_read >= limit) throw new IOException("Connection reset by peer");
+            var n = inner.Read(buffer, offset, (int)Math.Min(count, limit - _read));
+            _read += n;
+            return n;
+        }
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => _read; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }
 
@@ -104,10 +167,25 @@ internal static class Factory
         FeedBaseUri = FakeFeed.Base,
         LauncherVersion = Version.Parse(launcher),
         DiskSafetyMarginBytes = 0,
+        TrustedKeys = TestKeys.Trusted,
     };
 
-    public static GameUpdateService Service(string root, FakeFeed feed, FakePlatform? platform = null) =>
-        new("demo", Options(root), new HttpClient(feed), platform ?? new FakePlatform(), NullLoggerFactory.Instance);
+    public static GameUpdateService Service(string root, FakeFeed feed, FakePlatform? platform = null, int maxAttempts = 4) =>
+        new("demo", Options(root), new HttpClient(feed), platform ?? new FakePlatform(), NullLoggerFactory.Instance,
+            new DownloadService(new HttpClient(feed), NullLogger<DownloadService>.Instance)
+            {
+                MaxAttempts = maxAttempts,
+                InitialBackoff = TimeSpan.Zero,
+            });
+
+    /// <summary>A zip big enough that a mid-body cut leaves a meaningful partial file.</summary>
+    public static byte[] BigGameZip(string label) => Zips.Build(
+        new Zips.Entry("Game.app/Contents/Info.plist", "<plist/>"),
+        new Zips.Entry("Game.app/Contents/MacOS/Game", label, Mode: 0b111_101_101),
+        new Zips.Entry("Game.app/Contents/Resources/data.bin", RandomText(200_000)));
+
+    private static string RandomText(int length) =>
+        Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(length))[..length];
 
     public static byte[] GameZip(string label) => Zips.Build(
         new Zips.Entry("Game.app/Contents/Info.plist", "<plist/>"),

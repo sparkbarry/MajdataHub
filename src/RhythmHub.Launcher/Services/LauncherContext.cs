@@ -1,4 +1,5 @@
 using System.Reflection;
+using Microsoft.Extensions.Logging;
 using RhythmHub.Platform;
 using RhythmHub.Updater;
 
@@ -8,8 +9,9 @@ namespace RhythmHub.Launcher.Services;
 public sealed class LauncherContext : IDisposable
 {
     private LauncherContext(LauncherConfig config, IGamePlatform platform, UpdaterOptions options,
-        HttpClient http, FileLoggerFactory loggers)
+        HttpClient http, FileLoggerFactory loggers, InstanceLock? instanceLock)
     {
+        InstanceLock = instanceLock;
         Config = config;
         Platform = platform;
         Options = options;
@@ -26,6 +28,9 @@ public sealed class LauncherContext : IDisposable
     public HttpClient Http { get; }
     public FileLoggerFactory Loggers { get; }
 
+    /// <summary>Null when another launcher already owns this install root.</summary>
+    public InstanceLock? InstanceLock { get; }
+
     public static LauncherContext Create()
     {
         var config = LauncherConfig.Load();
@@ -40,6 +45,7 @@ public sealed class LauncherContext : IDisposable
             FeedBaseUri = new Uri(config.FeedBaseUrl),
             Channel = config.Channel,
             LauncherVersion = new Version(version.Major, version.Minor, Math.Max(version.Build, 0)),
+            TrustedKeys = ReleaseKeys.Load(),
         };
         var http = new HttpClient(new SocketsHttpHandler
         {
@@ -51,12 +57,16 @@ public sealed class LauncherContext : IDisposable
             Timeout = Timeout.InfiniteTimeSpan,
         };
         http.DefaultRequestHeaders.UserAgent.ParseAdd($"RhythmHub/{options.LauncherVersion} ({options.PlatformId})");
+        var instanceLock = InstanceLock.TryAcquire(options.InstallRoot);
         var loggers = new FileLoggerFactory(Path.Combine(options.InstallRoot, "logs"));
-        return new LauncherContext(config, platform, options, http, loggers);
+        if (options.TrustedKeys.Count == 0)
+            loggers.CreateLogger("Launcher").LogWarning("No trusted release keys configured; every manifest will be rejected");
+        return new LauncherContext(config, platform, options, http, loggers, instanceLock);
     }
 
     public void Dispose()
     {
+        InstanceLock?.Dispose();
         Http.Dispose();
         Loggers.Dispose();
     }

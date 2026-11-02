@@ -18,14 +18,17 @@ public enum GameState
     Downloading,
     Verifying,
     Installing,
+    Running,
     Failed,
 }
 
 public sealed partial class GameViewModel : ObservableObject
 {
     private static readonly TimeSpan CheckTimeout = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan HealthTimeout = TimeSpan.FromMinutes(2);
 
     private readonly LauncherContext _context;
+    private readonly GameEntry _entry;
     private readonly GameUpdateService _updater;
     private readonly ILogger _logger;
     private CancellationTokenSource? _operation;
@@ -35,6 +38,7 @@ public sealed partial class GameViewModel : ObservableObject
     public GameViewModel(GameEntry entry, LauncherContext context)
     {
         _context = context;
+        _entry = entry;
         Id = entry.Id;
         DisplayName = entry.DisplayName;
         Description = entry.Description ?? "";
@@ -85,12 +89,22 @@ public sealed partial class GameViewModel : ObservableObject
         GameState.UpdateAvailable => "更新",
         GameState.Checking => "检查中…",
         GameState.Downloading or GameState.Verifying or GameState.Installing => "更新中…",
+        GameState.Running => "游戏运行中",
+        GameState.Failed when _available is not null => "重试",
         _ when Installed is not null => "开始游戏",
         _ => "检查更新",
     };
 
     public async Task InitializeAsync()
     {
+        try
+        {
+            await _updater.RecoverAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Recovery failed");
+        }
         await RefreshInstalledAsync();
         await CheckAsync();
     }
@@ -98,7 +112,7 @@ public sealed partial class GameViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanPrimary))]
     private async Task PrimaryAsync()
     {
-        if (State == GameState.UpdateAvailable && _available is not null)
+        if (State is GameState.UpdateAvailable or GameState.Failed && _available is not null)
             await UpdateAsync(_available);
         else if (Installed is not null)
             await LaunchAsync();
@@ -106,7 +120,7 @@ public sealed partial class GameViewModel : ObservableObject
             await CheckAsync();
     }
 
-    private bool CanPrimary() => !IsBusy;
+    private bool CanPrimary() => !IsBusy && State != GameState.Running;
 
     [RelayCommand(CanExecute = nameof(CanCheck))]
     private async Task CheckAsync()
@@ -116,11 +130,17 @@ public sealed partial class GameViewModel : ObservableObject
             _available = await _updater.CheckAsync(ct);
             RemoteVersion = _available?.Version ?? Installed?.Version;
             if (_available is null)
+            {
                 SetState(GameState.Ready, $"已是最新版本 {Installed?.Version}");
-            else
-                SetState(GameState.UpdateAvailable, Installed is null
-                    ? $"可安装 {_available.Version}（{FormatSize(_available.SizeBytes)}）"
-                    : $"发现新版本 {_available.Version}（{FormatSize(_available.SizeBytes)}）");
+                return;
+            }
+            var resumable = await _updater.GetResumableBytesAsync(_available, ct);
+            var size = resumable > 0
+                ? $"已下载 {FormatSize(resumable)} / {FormatSize(_available.SizeBytes)}，可继续"
+                : FormatSize(_available.SizeBytes);
+            SetState(GameState.UpdateAvailable, Installed is null
+                ? $"可安装 {_available.Version}（{size}）"
+                : $"发现新版本 {_available.Version}（{size}）");
         });
     }
 
@@ -154,10 +174,37 @@ public sealed partial class GameViewModel : ObservableObject
         if (Installed is not { } game) return;
         try
         {
+            if (await _context.Platform.IsGameRunningAsync(game.VersionDirectory, game.Entrypoint, CancellationToken.None))
+            {
+                StatusText = $"{DisplayName} 已在运行";
+                return;
+            }
+            var ticket = _updater.Health.Prepare(game);
             _logger.LogInformation("Launching {Version} from {Dir}", game.Version, game.VersionDirectory);
-            await _context.Platform.LaunchGameAsync(game.VersionDirectory, game.Entrypoint, CancellationToken.None);
-            await _updater.MarkLaunchedAsync(CancellationToken.None);
-            StatusText = $"已启动 {game.Version}";
+            await _context.Platform.LaunchGameAsync(game.VersionDirectory, game.Entrypoint, ticket.Environment, CancellationToken.None);
+            SetState(GameState.Running, $"正在启动 {game.Version}…");
+
+            var outcome = await _updater.Health.WaitAsync(ticket, _entry.HealthCheck,
+                ct => _context.Platform.IsGameRunningAsync(game.VersionDirectory, game.Entrypoint, ct),
+                HealthTimeout, CancellationToken.None);
+            await _updater.RecordLaunchAsync(game.Version, outcome, CancellationToken.None);
+            await RefreshInstalledAsync();
+
+            switch (outcome)
+            {
+                case LaunchOutcome.Healthy:
+                    SetState(GameState.Ready, $"已启动 {game.Version}");
+                    break;
+                case LaunchOutcome.Exited:
+                    SetState(GameState.Failed, CanRollback
+                        ? $"{game.Version} 未能正常启动。可以点击“恢复上一版本”回到可用的旧版。"
+                        : $"{game.Version} 未能正常启动，请查看日志或重新安装。");
+                    break;
+                case LaunchOutcome.TimedOut:
+                    SetState(GameState.Ready, $"{game.Version} 已启动，但未在 {HealthTimeout.TotalMinutes:0} 分钟内报告就绪。" +
+                        (CanRollback ? "如果游戏异常，可恢复上一版本。" : ""));
+                    break;
+            }
         }
         catch (Exception ex)
         {
@@ -219,8 +266,8 @@ public sealed partial class GameViewModel : ObservableObject
         {
             var timedOut = !_userCancelled && timeout is not null;
             _logger.LogWarning("{Step} cancelled", busyState);
-            SetState(Installed is null ? GameState.Failed : GameState.Ready,
-                timedOut ? "连接超时，可稍后重试" + OfflineHint() : "已取消" + OfflineHint());
+            SetState(_available is not null ? GameState.UpdateAvailable : Installed is null ? GameState.Failed : GameState.Ready,
+                (timedOut ? "连接超时，可稍后重试" : _available is not null ? "已暂停，再次点击可继续下载" : "已取消") + OfflineHint());
         }
         catch (UpdateException ex)
         {
@@ -250,6 +297,10 @@ public sealed partial class GameViewModel : ObservableObject
     private static string Describe(UpdateException ex) => ex.Code switch
     {
         UpdateErrorCode.Network => "无法连接更新服务器",
+        UpdateErrorCode.Timeout => "网络超时，已下载的部分会保留，可继续下载",
+        UpdateErrorCode.RateLimited => "更新服务器繁忙，请稍后重试",
+        UpdateErrorCode.PackageNotFound => "服务器上找不到安装包",
+        UpdateErrorCode.SignatureInvalid => "更新清单签名无效，已拒绝",
         UpdateErrorCode.ManifestNotFound => "服务器上暂无该游戏的发布版本",
         UpdateErrorCode.ManifestInvalid => "更新清单无效",
         UpdateErrorCode.LauncherTooOld => "需要先更新 RhythmHub",

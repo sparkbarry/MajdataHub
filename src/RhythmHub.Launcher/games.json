@@ -5,12 +5,14 @@
     {
       "id": "majdataplay",
       "displayName": "MajdataPlay",
-      "description": "maimai 风格的街机节奏游戏模拟器。"
+      "description": "maimai 风格的街机节奏游戏模拟器。",
+      "healthCheck": false
     },
     {
       "id": "ourtaiko",
       "displayName": "OurTaiko",
-      "description": "太鼓风格的节奏游戏。"
+      "description": "太鼓风格的节奏游戏。",
+      "healthCheck": false
     }
   ]
 }

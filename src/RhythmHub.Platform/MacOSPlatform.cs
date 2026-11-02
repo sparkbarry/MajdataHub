@@ -19,11 +19,13 @@ public sealed class MacOSPlatform : IGamePlatform
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         "Library", "Application Support", GamePlatform.AppFolderName);
 
-    public async Task LaunchGameAsync(string versionDirectory, string entrypoint, CancellationToken ct)
+    public async Task LaunchGameAsync(string versionDirectory, string entrypoint, IReadOnlyDictionary<string, string> environment,
+        CancellationToken ct)
     {
         // Let LaunchServices start the bundle instead of exec'ing the binary inside it.
         var app = Path.Combine(versionDirectory, entrypoint);
-        var (code, _, err) = await RunAsync("/usr/bin/open", ["-n", app], ct);
+        string[] args = ["-n", .. environment.SelectMany(kv => new[] { "--env", $"{kv.Key}={kv.Value}" }), app];
+        var (code, _, err) = await RunAsync("/usr/bin/open", args, ct);
         if (code != 0)
             throw new InvalidOperationException($"open failed ({code}): {err.Trim()}");
     }

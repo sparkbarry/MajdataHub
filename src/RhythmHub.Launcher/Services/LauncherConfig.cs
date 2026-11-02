@@ -2,7 +2,8 @@ using System.Text.Json;
 
 namespace RhythmHub.Launcher.Services;
 
-public sealed record GameEntry(string Id, string DisplayName, string? Description);
+/// <param name="HealthCheck">True once the game writes the launch health marker (docs/update-protocol.md §7).</param>
+public sealed record GameEntry(string Id, string DisplayName, string? Description, bool HealthCheck = false);
 
 /// <summary>Built-in game catalog shipped as games.json next to the executable.</summary>
 public sealed record LauncherConfig(string FeedBaseUrl, string Channel, IReadOnlyList<GameEntry> Games)

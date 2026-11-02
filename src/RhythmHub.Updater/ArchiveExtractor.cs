@@ -12,7 +12,9 @@ public static class ArchiveExtractor
     private const int UnixSymlink = 0xA000;       // S_IFLNK
     private const int UnixRegular = 0x8000;       // S_IFREG
     private const int UnixDirectory = 0x4000;     // S_IFDIR
+    private const int MaxSymlinkTargetLength = 1024;
 
+    /// <returns>Total bytes of regular files written.</returns>
     public static async Task<long> ExtractAsync(string zipPath, string destination, long maxTotalBytes, CancellationToken ct)
     {
         var root = Path.GetFullPath(destination);
@@ -45,14 +47,12 @@ public static class ArchiveExtractor
             if (fileType != 0 && fileType != UnixRegular && fileType != UnixSymlink)
                 throw Unsafe($"special file '{entry.FullName}'");
 
-            total += entry.Length;
-            if (total > maxTotalBytes)
-                throw Unsafe($"unpacked size exceeds {maxTotalBytes} bytes");
-
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
 
             if (fileType == UnixSymlink)
             {
+                if (entry.Length > MaxSymlinkTargetLength)
+                    throw Unsafe($"oversized symlink '{entry.FullName}'");
                 using var reader = new StreamReader(await entry.OpenAsync(ct));
                 var target = await reader.ReadToEndAsync(ct);
                 if (Path.IsPathRooted(target))
@@ -63,6 +63,10 @@ public static class ArchiveExtractor
                 symlinks.Add((fullPath, target));
                 continue;
             }
+
+            total += entry.Length;
+            if (total > maxTotalBytes)
+                throw Unsafe($"unpacked size exceeds {maxTotalBytes} bytes");
 
             await entry.ExtractToFileAsync(fullPath, overwrite: false, ct);
             if (!OperatingSystem.IsWindows() && unixMode != 0)

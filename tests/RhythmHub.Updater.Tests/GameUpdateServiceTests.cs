@@ -64,8 +64,76 @@ public class GameUpdateServiceTests
             await InstallLatestAsync(svc);
         }
 
+        // 1.1.0 never launched successfully, so 1.0.0 stays the rollback target and 1.1.0 is dropped.
         var dirs = Directory.GetDirectories(svc.Layout.VersionsDirectory).Select(Path.GetFileName).Order();
-        Assert.Equal(["1.1.0", "1.2.0"], dirs);
+        Assert.Equal(["1.0.0", "1.2.0"], dirs);
+    }
+
+    [Fact]
+    public async Task Healthy_version_becomes_rollback_target()
+    {
+        using var tmp = new TempDir();
+        var feed = new FakeFeed();
+        var svc = Factory.Service(tmp.Path, feed);
+        foreach (var v in new[] { "1.0.0", "1.1.0", "1.2.0" })
+        {
+            feed.Publish("demo", Factory.Platform, v, Factory.GameZip(v));
+            await InstallLatestAsync(svc);
+            await svc.RecordLaunchAsync(v, LaunchOutcome.Healthy, Ct);
+        }
+
+        var state = await svc.GetStateAsync(Ct);
+        Assert.Equal("1.1.0", state.PreviousGoodVersion);
+        Assert.Equal(["1.1.0", "1.2.0"], Directory.GetDirectories(svc.Layout.VersionsDirectory).Select(Path.GetFileName).Order());
+    }
+
+    [Fact]
+    public async Task Rollback_does_not_offer_the_abandoned_version_again()
+    {
+        using var tmp = new TempDir();
+        var feed = new FakeFeed();
+        var svc = Factory.Service(tmp.Path, feed);
+        feed.Publish("demo", Factory.Platform, "1.0.0", Factory.GameZip("v1"));
+        await InstallLatestAsync(svc);
+        await svc.RecordLaunchAsync("1.0.0", LaunchOutcome.Healthy, Ct);
+        feed.Publish("demo", Factory.Platform, "1.1.0", Factory.GameZip("v2"));
+        await InstallLatestAsync(svc);
+        await svc.RecordLaunchAsync("1.1.0", LaunchOutcome.Exited, Ct);
+
+        await svc.RollbackAsync(Ct);
+
+        var state = await svc.GetStateAsync(Ct);
+        Assert.Equal("1.0.0", state.ActiveVersion);
+        Assert.Null(state.PreviousGoodVersion);
+        Assert.True(state.LastLaunchSuccessful);
+    }
+
+    [Fact]
+    public async Task Installed_size_mismatch_is_rejected()
+    {
+        using var tmp = new TempDir();
+        var feed = new FakeFeed();
+        var svc = Factory.Service(tmp.Path, feed);
+        feed.Publish("demo", Factory.Platform, "1.0.0", Factory.GameZip("v1"), installedSize: 999_999);
+
+        var release = (await svc.CheckAsync(Ct))!;
+        await svc.DownloadAsync(release, null, Ct);
+        var ex = await Assert.ThrowsAsync<UpdateException>(() => svc.InstallAsync(release, Ct));
+        Assert.Equal(UpdateErrorCode.InvalidPackage, ex.Code);
+        Assert.Null(await svc.GetInstalledAsync(Ct));
+    }
+
+    [Fact]
+    public async Task Unsigned_manifest_is_rejected_before_download()
+    {
+        using var tmp = new TempDir();
+        var feed = new FakeFeed();
+        feed.Publish("demo", Factory.Platform, "1.0.0", Factory.GameZip("v1"), sign: false);
+        var svc = Factory.Service(tmp.Path, feed);
+
+        var ex = await Assert.ThrowsAsync<UpdateException>(() => svc.CheckAsync(Ct));
+        Assert.Equal(UpdateErrorCode.SignatureInvalid, ex.Code);
+        Assert.DoesNotContain(feed.Log, r => r.Uri.AbsolutePath.EndsWith(".zip"));
     }
 
     [Fact]

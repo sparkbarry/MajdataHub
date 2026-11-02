@@ -17,14 +17,16 @@ public sealed class WindowsPlatform : IGamePlatform
     public string DefaultInstallRoot { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), GamePlatform.AppFolderName);
 
-    public Task LaunchGameAsync(string versionDirectory, string entrypoint, CancellationToken ct)
+    public Task LaunchGameAsync(string versionDirectory, string entrypoint, IReadOnlyDictionary<string, string> environment,
+        CancellationToken ct)
     {
-        var exe = Path.Combine(versionDirectory, entrypoint);
-        Process.Start(new ProcessStartInfo(exe)
+        var psi = new ProcessStartInfo(Path.Combine(versionDirectory, entrypoint))
         {
             WorkingDirectory = versionDirectory,
             UseShellExecute = false,
-        })?.Dispose();
+        };
+        foreach (var (key, value) in environment) psi.Environment[key] = value;
+        Process.Start(psi)?.Dispose();
         return Task.CompletedTask;
     }
 

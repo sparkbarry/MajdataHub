@@ -1,7 +1,9 @@
 using System.IO.Compression;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using RhythmHub.Updater;
 using RhythmHub.Updater.Models;
+using RhythmHub.Updater.Security;
 
 // rhythmhub-release: packages a Unity player build into the feed layout described in docs/update-protocol.md.
 return await ReleaseTool.RunAsync(args);
@@ -12,18 +14,26 @@ internal static class ReleaseTool
         Usage:
           pack --game <id> --platform <win-x64|osx-arm64|osx-x64> --version <x.y.z>
                --input <build dir> --entrypoint <Game.exe|Game.app>
-               --base-url <https://cdn/> --out <feed root> [--channel stable] [--min-launcher 0.1.0]
-               [--release-notes-url <url>]
-              Zips <input>, writes game/<id>/<platform>/releases/<version>/game.zip and the channel manifest.
+               --base-url <https://cdn/> --out <feed root> --key-id <id>
+               [--channel stable] [--min-launcher 0.1.0] [--release-notes-url <url>]
+              Zips <input>, writes game/<id>/<platform>/releases/<version>/game.zip and the signed channel manifest.
               The release zip is written before the manifest, matching the production publish order.
+              The Ed25519 private key is read from $RHYTHMHUB_SIGNING_KEY (base64), never from the command line.
 
-          fake-game --platform <id> --name <Name> --out <dir> [--label <text>]
+          keygen --out <private key file>
+              Creates an Ed25519 key pair; prints the public key to paste into ReleaseKeys.cs.
+
+          fake-game --platform <id> --name <Name> --out <dir> [--label <text>] [--crash true]
               Writes a tiny stand-in player (Windows layout or a macOS .app) for local end-to-end testing.
+              The macOS one writes the health marker; with --crash it exits immediately instead.
         """;
+
+    private const string SigningKeyVariable = "RHYTHMHUB_SIGNING_KEY";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
     };
 
@@ -37,6 +47,7 @@ internal static class ReleaseTool
             {
                 case "pack": await PackAsync(opts); return 0;
                 case "fake-game": FakeGame(opts); return 0;
+                case "keygen": KeyGen(opts); return 0;
                 default: Console.Error.WriteLine(Usage); return 2;
             }
         }
@@ -63,6 +74,9 @@ internal static class ReleaseTool
         var entrypoint = Req(o, "entrypoint");
         var baseUrl = Req(o, "base-url").TrimEnd('/') + "/";
         var outRoot = Path.GetFullPath(Req(o, "out"));
+        var keyId = Req(o, "key-id");
+        var privateKey = Environment.GetEnvironmentVariable(SigningKeyVariable)
+            ?? throw new InvalidOperationException($"Set {SigningKeyVariable} to the base64 Ed25519 private key.");
 
         if (!File.Exists(Path.Combine(input, entrypoint)) && !Directory.Exists(Path.Combine(input, entrypoint)))
             throw new InvalidOperationException($"{entrypoint} not found in {input}");
@@ -94,10 +108,13 @@ internal static class ReleaseTool
             },
             Entrypoint = entrypoint,
         };
-        // TODO(phase B): sign the canonicalized manifest (Ed25519, RFC 8785) before writing it.
+        var node = JsonSerializer.SerializeToNode(manifest, Json)!.AsObject();
+        ManifestSigning.Sign(node, privateKey, keyId);
+        ManifestSigning.Verify(node, new Dictionary<string, string> { [keyId] = ManifestSigning.PublicKeyFor(privateKey) });
+
         var manifestPath = Path.Combine(platformDir, $"{channel}.json");
         var tmp = manifestPath + ".tmp";
-        await File.WriteAllTextAsync(tmp, JsonSerializer.Serialize(manifest, Json));
+        await File.WriteAllTextAsync(tmp, node.ToJsonString(Json));
         File.Move(tmp, manifestPath, overwrite: true);
 
         Console.WriteLine($"zip       {zipPath}");
@@ -151,6 +168,17 @@ internal static class ReleaseTool
         }
     }
 
+    private static void KeyGen(Dictionary<string, string> o)
+    {
+        var path = Path.GetFullPath(Req(o, "out"));
+        if (File.Exists(path)) throw new InvalidOperationException($"{path} already exists.");
+        var (priv, pub) = ManifestSigning.GenerateKeyPair();
+        File.WriteAllText(path, priv);
+        if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        Console.WriteLine($"private key written to {path} (keep it secret; store it as a CI secret)");
+        Console.WriteLine($"public key: {pub}");
+    }
+
     private static void FakeGame(Dictionary<string, string> o)
     {
         var platform = Req(o, "platform");
@@ -187,6 +215,7 @@ internal static class ReleaseTool
             </dict></plist>
             """);
         File.WriteAllText(Path.Combine(resources, "label.txt"), label);
+        if (o.GetValueOrDefault("crash") == "true") File.WriteAllText(Path.Combine(resources, "crash"), "");
         File.CreateSymbolicLink(Path.Combine(resources, "label-link.txt"), "label.txt");
         // Framework-style directory symlink, the shape that breaks naive zip tools.
         var framework = Path.Combine(contents, "Frameworks", "Fake.framework");
@@ -197,6 +226,13 @@ internal static class ReleaseTool
         File.WriteAllText(exe, $"""
             #!/bin/sh
             echo "{label} started $(date)" >> "$HOME/Library/Logs/rhythmhub-fake-game.log"
+            # Simulate a game that reports healthy after initializing (docs/update-protocol.md §7).
+            [ -f "$(dirname "$0")/../Resources/crash" ] && exit 1
+            if [ -n "$RHYTHMHUB_HEALTH_FILE" ]; then
+              sleep 1
+              printf '{"{"}"nonce":"%s","version":"%s"{"}"}' "$RHYTHMHUB_LAUNCH_NONCE" "$RHYTHMHUB_GAME_VERSION" > "$RHYTHMHUB_HEALTH_FILE.tmp"
+              mv "$RHYTHMHUB_HEALTH_FILE.tmp" "$RHYTHMHUB_HEALTH_FILE"
+            fi
             sleep 30
             """);
         if (!OperatingSystem.IsWindows())

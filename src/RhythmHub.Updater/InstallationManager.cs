@@ -22,7 +22,10 @@ public sealed class InstallationManager(GameInstallLayout layout, VersionReposit
         {
             var limit = release.InstalledSizeBytes is { } declared ? declared + declared / 10 : DefaultMaxUnpackedBytes;
             logger.LogInformation("Extracting {Zip} to {Staging}", zipPath, staging);
-            await ArchiveExtractor.ExtractAsync(zipPath, staging, limit, ct);
+            var unpacked = await ArchiveExtractor.ExtractAsync(zipPath, staging, limit, ct);
+            if (release.InstalledSizeBytes is { } expected && unpacked != expected)
+                throw new UpdateException(UpdateErrorCode.InvalidPackage,
+                    $"Package unpacked to {unpacked} bytes, manifest declares {expected}.");
 
             var entry = Path.Combine(staging, release.Entrypoint);
             if (!File.Exists(entry) && !Directory.Exists(entry))
@@ -49,12 +52,16 @@ public sealed class InstallationManager(GameInstallLayout layout, VersionReposit
             }
             Directory.Move(staging, target);
 
-            // Commit point.
+            // Commit point. Only a version that has launched successfully becomes the rollback target;
+            // an unverified one is dropped in favour of the last known good.
             var previous = state.ActiveVersion;
+            var rollbackTarget = previous is not null && (state.LastLaunchSuccessful || state.PreviousGoodVersion is null)
+                ? previous
+                : state.PreviousGoodVersion;
             await versions.SaveAsync(state with
             {
                 ActiveVersion = release.Version,
-                PreviousGoodVersion = previous ?? state.PreviousGoodVersion,
+                PreviousGoodVersion = rollbackTarget,
                 LastLaunchSuccessful = false,
             }, ct);
             logger.LogInformation("Activated {Game} {Version} (previous {Previous})", layout.GameId, release.Version, previous);
@@ -75,11 +82,13 @@ public sealed class InstallationManager(GameInstallLayout layout, VersionReposit
             await versions.LoadReleaseInfoAsync(previous, ct) is null)
             throw new UpdateException(UpdateErrorCode.NoRollbackTarget, "No previous version is available.");
 
+        // The version being left is the one that misbehaved; don't offer it as a rollback target.
+        // previous launched fine before, so it keeps its known-good status.
         await versions.SaveAsync(state with
         {
             ActiveVersion = previous,
-            PreviousGoodVersion = state.ActiveVersion,
-            LastLaunchSuccessful = false,
+            PreviousGoodVersion = null,
+            LastLaunchSuccessful = true,
         }, ct);
         logger.LogInformation("Rolled back {Game} from {From} to {To}", layout.GameId, state.ActiveVersion, previous);
     }

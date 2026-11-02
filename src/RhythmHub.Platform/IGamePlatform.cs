@@ -10,7 +10,9 @@ public interface IGamePlatform : IPackageVerifier
     /// <summary>Per-user, writable root for games, downloads and logs. No admin rights needed.</summary>
     string DefaultInstallRoot { get; }
 
-    Task LaunchGameAsync(string versionDirectory, string entrypoint, CancellationToken ct);
+    /// <param name="environment">Extra variables for the game process (the health handshake uses these).</param>
+    Task LaunchGameAsync(string versionDirectory, string entrypoint, IReadOnlyDictionary<string, string> environment,
+        CancellationToken ct);
 
     /// <summary>Opens a folder in Explorer / Finder.</summary>
     void RevealDirectory(string path);

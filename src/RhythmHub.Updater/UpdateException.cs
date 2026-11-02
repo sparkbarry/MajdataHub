@@ -3,6 +3,10 @@ namespace RhythmHub.Updater;
 public enum UpdateErrorCode
 {
     Network,
+    Timeout,
+    RateLimited,
+    PackageNotFound,
+    SignatureInvalid,
     ManifestNotFound,
     ManifestInvalid,
     LauncherTooOld,
@@ -16,7 +20,7 @@ public enum UpdateErrorCode
     NoRollbackTarget,
 }
 
-public sealed class UpdateException(UpdateErrorCode code, string message, Exception? inner = null)
+public class UpdateException(UpdateErrorCode code, string message, Exception? inner = null)
     : Exception(message, inner)
 {
     public UpdateErrorCode Code { get; } = code;

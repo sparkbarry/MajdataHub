@@ -1,8 +1,9 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using RhythmHub.Updater.Models;
+using RhythmHub.Updater.Security;
 
 namespace RhythmHub.Updater;
 
@@ -18,7 +19,7 @@ public sealed class ManifestClient(HttpClient http, ILogger<ManifestClient> logg
         RequireTrustedTransport(uri);
         logger.LogInformation("Fetching manifest {Uri}", uri);
 
-        GameManifest? manifest;
+        byte[] body;
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, uri);
@@ -26,24 +27,36 @@ public sealed class ManifestClient(HttpClient http, ILogger<ManifestClient> logg
             using var response = await http.SendAsync(request, ct);
             if (response.StatusCode == HttpStatusCode.NotFound)
                 throw new UpdateException(UpdateErrorCode.ManifestNotFound, $"No {options.Channel} release published for {gameId} on {options.PlatformId}.");
+            if (response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable)
+                throw new UpdateException(UpdateErrorCode.RateLimited, $"Update server is busy ({(int)response.StatusCode}).");
             response.EnsureSuccessStatusCode();
-            manifest = await response.Content.ReadFromJsonAsync<GameManifest>(UpdaterJson.Options, ct);
+            body = await response.Content.ReadAsByteArrayAsync(ct);
         }
         catch (HttpRequestException ex)
         {
             throw new UpdateException(UpdateErrorCode.Network, $"Failed to fetch manifest: {ex.Message}", ex);
         }
+
+        var manifest = Parse(body, options.TrustedKeys);
+        Validate(manifest, options, gameId);
+        return manifest;
+    }
+
+    /// <summary>Verifies the signature over the bytes as received, then binds the model. Nothing is trusted before that.</summary>
+    internal static GameManifest Parse(byte[] body, IReadOnlyDictionary<string, string> trustedKeys)
+    {
+        try
+        {
+            if (JsonNode.Parse(body) is not JsonObject node)
+                throw new UpdateException(UpdateErrorCode.ManifestInvalid, "Manifest must be a JSON object.");
+            ManifestSigning.Verify(node, trustedKeys);
+            return node.Deserialize<GameManifest>(UpdaterJson.Options)
+                ?? throw new UpdateException(UpdateErrorCode.ManifestInvalid, "Manifest is empty.");
+        }
         catch (JsonException ex)
         {
-            throw new UpdateException(UpdateErrorCode.ManifestInvalid, $"Manifest is not valid JSON: {ex.Message}", ex);
+            throw new UpdateException(UpdateErrorCode.ManifestInvalid, $"Manifest is not valid: {ex.Message}", ex);
         }
-
-        if (manifest is null)
-            throw new UpdateException(UpdateErrorCode.ManifestInvalid, "Manifest is empty.");
-
-        Validate(manifest, options, gameId);
-        // TODO(phase B): verify manifest.Signature against the built-in public key before trusting anything in it.
-        return manifest;
     }
 
     internal static void Validate(GameManifest m, UpdaterOptions options, string gameId)

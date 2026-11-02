@@ -16,6 +16,13 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var context = LauncherContext.Create();
+            if (context.InstanceLock is null)
+            {
+                context.Dispose();
+                desktop.MainWindow = new AlreadyRunningWindow();
+                base.OnFrameworkInitializationCompleted();
+                return;
+            }
             var vm = new MainWindowViewModel(context);
             desktop.MainWindow = new MainWindow { DataContext = vm };
             desktop.ShutdownRequested += (_, _) => context.Dispose();
