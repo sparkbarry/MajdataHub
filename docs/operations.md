@@ -54,10 +54,10 @@
 | OurTaikoPlay 自动发布 | ✅ 已合并（OurTaiko/OurTaikoPlay#49）。首个 nightly `1.0-400` 已自动上线；从 CDN 安装的 Mac 版与 GitHub Release 的 zip 逐文件一致（218 个文件） |
 | MajdataPlay 自动发布 | 🟡 已合并（TeamMajdata/MajdataPlay#375）。Windows nightly `2.1.0-6d68d84` 已上线；macOS 首次运行时自建 Mac 磁盘耗尽而失败（见 §7.1），缩减占用的修复在 #376，需先清理那台 Mac 的磁盘 |
 | 游戏 Mac 版苹果签名 / 公证 | ⏳ 未做（通过启动器安装不受 Gatekeeper 隔离影响） |
-| 启动器 Velopack 打包、自更新 | 🟡 `Launcher` 工作流已写好（见 §8），自更新已在本机验证；还没发布过 `v1.x` |
+| 启动器 Velopack 打包、自更新 | ✅ `v1.0.0` 已发布到 CDN 和 GitHub Release（见 §8）；CDN 与 GitHub 的 Mac 便携包一致，运行后自更新检查正常 |
 | 启动器 macOS 签名公证 | ⏳ 等 MajdataHub 配好 §8.3 的 Apple Secrets；未配置时 Mac 包不签名 |
 | 启动器 Windows 代码签名 | ⏳ 暂不做（安装时会有 SmartScreen 提示） |
-| 启动器内切换 stable / nightly 频道 | ⏳ 未做（目前只读 `games.json` 的 `channel`） |
+| 启动器内切换 stable / nightly 频道 | ⏳ 未做（目前只读 `games.json` 的 `channel` = stable；两个游戏都还没有 stable，所以 1.0.0 里暂时装不了游戏） |
 | Windows 真机安装测试 | ⏳ 未做 |
 
 ## 1. 总览
