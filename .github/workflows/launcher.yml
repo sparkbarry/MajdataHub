@@ -60,7 +60,7 @@ jobs:
             version="${GITHUB_REF_NAME#launcher-v}"
           else
             # Dry runs get a prerelease version that can never be published.
-            version="0.0.0-ci.${GITHUB_RUN_NUMBER}"
+            version="0.0.1-ci.${GITHUB_RUN_NUMBER}" # vpk requires >= 0.0.1
           fi
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "::error::Bad version $version"; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"

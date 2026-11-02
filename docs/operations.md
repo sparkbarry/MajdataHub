@@ -405,7 +405,7 @@ curl -sI https://distrib.sparkbarry.com/NewGame/Windows/stable.json | grep -i ca
 
 | 触发 | 做什么 |
 |---|---|
-| 推送到 `main` / `rhythmhub`、PR、手动运行 | Windows 和 macOS 上 `dotnet test`，再用 `vpk pack` 打包（版本号 `0.0.0-ci.<运行号>`），产物只作为 Artifact，不发布 |
+| 推送到 `main` / `rhythmhub`、PR、手动运行 | Windows 和 macOS 上 `dotnet test`，再用 `vpk pack` 打包（版本号 `0.0.1-ci.<运行号>`），产物只作为 Artifact，不发布 |
 | 推送 `launcher-v*` 标签（如 `launcher-v1.0.0`） | 同上，用标签里的版本号；再上传到 CDN 并创建 GitHub Release。带 `-` 的版本（如 `1.0.0-rc.1`）标成 Pre-release |
 
 ```bash
