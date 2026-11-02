@@ -23,6 +23,7 @@
 | 上传 Action | `sparkbarry/MajdataHub/.github/actions/upload-build@main` |
 | 上线脚本 | `tools/ci/go-live.sh` |
 | 发布工具 | `tools/RhythmHub.ReleaseTool`（`stage` / `publish` / `keygen` / `fake-game`） |
+| 预编译发布工具 | GitHub Release `release-tool`（`rhythmhub-release-linux-x64.tar.gz`、`-osx-arm64.tar.gz`），由 `.github/workflows/release-tool.yml` 自动更新 |
 | 手动发布 / 回滚工作流 | `.github/workflows/publish-game.yml`（Publish game release） |
 | 回归测试工作流 | `.github/workflows/test-pipeline.yml`（Pipeline test，用 `PipelineTest/`） |
 | AWS 权限模板 | `infra/aws/github-ci-roles.yaml`，CloudFormation 堆栈 `rhythmhub-ci`（东京） |
@@ -41,6 +42,7 @@
 8. **桶里只放游戏发布文件**，桶的全部内容都会通过 CDN 公开。
 9. **删除操作**只允许两种：`go-live.sh` 对 nightly 的自动清理，以及 Pipeline test 的 `cleanup`（只删 `PipelineTest/`）。不要手动删除其他游戏目录。
 10. 修改上传 Action、`go-live.sh`、发布工具或 AWS 配置后，必须运行 **Pipeline test** 回归（§4.4），通过后再让真实游戏使用。
+11. **自建机器磁盘有限**（MajdataPlay 的 Mac）：上传 Action 不能在 runner 上安装大的依赖。它使用预编译的发布工具，不需要 .NET SDK；准备构建目录时用 APFS 克隆（`cp -c`），不要整份复制。
 
 ### 0.3 当前进度（2026-11-02）
 
@@ -50,7 +52,7 @@
 | CI 角色、各仓库 Variables / Secrets | ✅ 三个仓库都已配置（见 §3） |
 | MajdataHub 手动发布、回归测试工作流 | ✅ 已用 PipelineTest 在真实环境验证 |
 | OurTaikoPlay 自动发布 | ✅ 已合并（OurTaiko/OurTaikoPlay#49）。首个 nightly `1.0-400` 已自动上线；从 CDN 安装的 Mac 版与 GitHub Release 的 zip 逐文件一致（218 个文件） |
-| MajdataPlay 自动发布 | ⏳ Secret 已就绪，CI 工作流尚未接入 |
+| MajdataPlay 自动发布 | 🟡 已合并（TeamMajdata/MajdataPlay#375）。Windows nightly `2.1.0-6d68d84` 已上线；macOS 首次运行时自建 Mac 磁盘耗尽而失败（见 §7.1），缩减占用的修复在 #376，需先清理那台 Mac 的磁盘 |
 | 游戏 Mac 版苹果签名 / 公证 | ⏳ 未做（通过启动器安装不受 Gatekeeper 隔离影响） |
 | 启动器 Velopack 打包、自更新、启动器签名公证 | ⏳ 未做 |
 | 启动器内切换 stable / nightly 频道 | ⏳ 未做（目前只读 `games.json` 的 `channel`） |
@@ -195,11 +197,19 @@ gh variable get AWS_ROLE_ARN --repo <owner>/<repo>
 
 目前启动器只读取 `games.json` 里的 `channel`（`stable`），还没有在界面上切换频道的功能，所以玩家暂时看不到 nightly。
 
-### 4.2 自动发布（OurTaikoPlay）
+### 4.2 自动发布（OurTaikoPlay、MajdataPlay）
 
-`OurTaiko/OurTaikoPlay` 的 `.github/workflows/build.yml` 在 Windows / macOS 构建完成后调用
+| 仓库 | 工作流 | stable | nightly | 构建机器 |
+|---|---|---|---|---|
+| OurTaiko/OurTaikoPlay | `.github/workflows/build.yml` | `v*` 标签 | `main` | 全部在 GitHub 的 Ubuntu 机器上（GameCI） |
+| TeamMajdata/MajdataPlay | `.github/workflows/main.yml` | `v*` 标签（只构建 Windows、macOS，跳过 Linux、Android、iOS 和 GitHub nightly Release） | `dev` | Windows 在 GitHub 的 Ubuntu 机器上；macOS 在**自建 Mac**（`majplay-apple`，和 `majplay-android`、`majplay-ios` 在同一台机器上） |
+
+版本号：OurTaikoPlay 是 `版本-提交数`（例如 `1.0-400`）；MajdataPlay 是 `bundleVersion-提交号前7位`（例如 `2.1.0-6d68d84`）。
+
+两个仓库都在 Windows / macOS 构建完成后调用
 `sparkbarry/MajdataHub/.github/actions/upload-build@main`，依次执行：
 
+0. 从 `release-tool` Release 下载预编译的 `rhythmhub-release`（没有对应平台的版本时，才回退到从源码构建，需要 .NET SDK），并在日志里打印 runner 的剩余磁盘空间。
 1. `rhythmhub-release stage`：根据构建目录生成清单（文件哈希、权限位、符号链接、空目录）。
 2. `aws s3 sync --no-follow-symlinks` 上传到 `{game}/{platform}/{version}/`。
 3. 签名生成 `{version}.json`，上传后等 CDN 能拿到相同字节。
@@ -358,6 +368,18 @@ curl -sI https://distrib.sparkbarry.com/NewGame/Windows/stable.json | grep -i ca
 
 ## 7. 常见问题
 
+### 7.1 事故记录：MajdataPlay 自建 Mac 磁盘耗尽（2026-11-02）
+
+- **现象**：#375 合并后的第一次 `dev` 构建（run 41401868445）中，macOS 任务在 **Publish to RhythmHub** 这一步报 `No space left on device`，GitHub Runner 进程崩溃；同一台机器上的 Android 和 iOS 任务也一起失败。结果是这次推送没有上传 Google Play 和 TestFlight，也没有更新 GitHub nightly Release。Windows 的 RhythmHub nightly 正常上线。
+- **原因**：这台 Mac 的磁盘本来就接近满了。当时的上传 Action 又在上面安装了 .NET SDK（约 1 GB），还用 `ditto` 把 `.app` 完整复制了一份，把磁盘撑满。
+- **修复**：
+  - 上传 Action 改为下载约 33 MB 的预编译工具，不再安装 SDK（MajdataHub `6624e82`）。
+  - MajdataPlay 改用 `cp -cpR` 克隆 `.app`（TeamMajdata/MajdataPlay#376）。
+  - 需要人工清理那台 Mac 的磁盘。如果 `~/.dotnet` 只是那次运行装上的，可以直接删除。
+- **预防**：Action 现在会在日志里打印剩余空间。修改上传流程时遵守 §0.2 第 11 条。
+
+### 7.2 报错速查
+
 | 现象 | 原因与处理 |
 |---|---|
 | CI 报 `Not authorized to perform sts:AssumeRoleWithWebIdentity` | 仓库的 subject 不在信任列表里，或者用了不带数字 ID 的旧格式。用 `gh api …/oidc/customization/sub` 核对，再按 §5.2 更新堆栈。还要确认 job 有 `id-token: write` 权限 |
@@ -367,3 +389,5 @@ curl -sI https://distrib.sparkbarry.com/NewGame/Windows/stable.json | grep -i ca
 | 启动器提示“更新清单签名无效” | 签名用的私钥和启动器内置的公钥不配对，或者清单被改过。核对 `RHYTHMHUB_SIGNING_KEY` 和 `ReleaseKeys.cs` |
 | 启动器提示“服务器上暂无该游戏的发布版本” | 对应频道的 `stable.json` 还不存在，比如还没打过 `v*` 标签 |
 | 发布后玩家迟迟看不到新版本 | 检查 `{channel}.json` 的 `Cache-Control` 是否为 `no-cache`；手动上传时漏了这个头，CDN 最多会缓存 24 小时 |
+| 自建机器报 `No space left on device` | 见 §7.1。先清理磁盘，然后在原运行上点 **Re-run failed jobs**，或者再推一次触发构建 |
+| 日志出现 `No prebuilt rhythmhub-release for …` | runner 的平台（例如 Intel Mac、Linux ARM）没有预编译版本，会自动回退到安装 .NET SDK 并从源码构建。需要的话，在 `release-tool.yml` 的 matrix 里加上这个平台 |
