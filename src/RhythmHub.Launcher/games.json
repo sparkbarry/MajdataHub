@@ -6,12 +6,16 @@
       "id": "MajdataPlay",
       "displayName": "MajdataPlay",
       "description": "maimai 风格的街机节奏游戏模拟器。",
+      "color": "#5E5CE6",
+      "icon": "Games/MajdataPlay.png",
       "healthCheck": false
     },
     {
       "id": "OurTaikoPlay",
       "displayName": "OurTaikoPlay",
       "description": "太鼓风格的节奏游戏。",
+      "color": "#E5532D",
+      "icon": "Games/OurTaikoPlay.png",
       "healthCheck": false
     }
   ]

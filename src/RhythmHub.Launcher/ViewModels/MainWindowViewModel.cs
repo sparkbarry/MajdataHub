@@ -23,7 +23,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private GameViewModel? selectedGame;
 
-    public string LauncherVersionText => $"RhythmHub {_context.Options.LauncherVersion} · {_context.Options.PlatformId}";
+    public string LauncherVersionText => $"RhythmHub {_context.Options.LauncherVersion}";
 
     /// <summary>Version of a downloaded launcher update waiting for a restart; null when there is none.</summary>
     [ObservableProperty]
@@ -35,7 +35,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private string launcherUpdateText = "";
 
-    partial void OnLauncherUpdateVersionChanged(string? value) => LauncherUpdateText = $"启动器新版本 {value} 已下载";
+    partial void OnLauncherUpdateVersionChanged(string? value) => LauncherUpdateText = "已下载，重启后生效";
 
     public async Task InitializeAsync()
     {

@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
@@ -42,6 +45,8 @@ public sealed partial class GameViewModel : ObservableObject
         Id = entry.Id;
         DisplayName = entry.DisplayName;
         Description = entry.Description ?? "";
+        Accent = Brush.Parse(entry.Color ?? "#0071E3");
+        Icon = LoadIcon(entry.Icon);
         _updater = new GameUpdateService(entry.Id, context.Options, context.Http, context.Platform, context.Loggers);
         _logger = context.Loggers.CreateLogger($"Game.{entry.Id}");
         selectedChannel = ChannelOption.Find(context.Settings.GetChannel(entry.Id, context.Options.Channel));
@@ -52,9 +57,28 @@ public sealed partial class GameViewModel : ObservableObject
     public string DisplayName { get; }
     public string Description { get; }
     public string Initial => DisplayName[..1];
+    public IBrush Accent { get; }
+
+    /// <summary>The game's icon; null shows the initial on the accent color instead.</summary>
+    public Bitmap? Icon { get; }
+    public bool HasIcon => Icon is not null;
+
+    /// <summary>Where the game lives, with the home directory shortened to ~.</summary>
+    public string GameFolderText
+    {
+        get
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var root = _updater.Layout.GameRoot;
+            return OperatingSystem.IsWindows() || !root.StartsWith(home, StringComparison.Ordinal) ? root : "~" + root[home.Length..];
+        }
+    }
+
+    public string RevealFolderText => OperatingSystem.IsMacOS() ? "在访达中显示" : "在资源管理器中显示";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsBusy), nameof(PrimaryText), nameof(ShowProgress), nameof(CanChangeChannel))]
+    [NotifyPropertyChangedFor(nameof(IsBusy), nameof(PrimaryText), nameof(ShowProgress), nameof(ShowStatus), nameof(CanChangeChannel),
+        nameof(IsFailed), nameof(SidebarText), nameof(ShowCheckButton))]
     [NotifyCanExecuteChangedFor(nameof(PrimaryCommand), nameof(CheckCommand), nameof(CancelCommand), nameof(RollbackCommand))]
     private GameState state;
 
@@ -70,7 +94,8 @@ public sealed partial class GameViewModel : ObservableObject
     private string statusText = "";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(InstalledVersionText), nameof(PrimaryText))]
+    [NotifyPropertyChangedFor(nameof(InstalledVersionText), nameof(InstalledVersionShort), nameof(PrimaryText), nameof(SidebarText),
+        nameof(HasInstall), nameof(ShowCheckButton))]
     [NotifyCanExecuteChangedFor(nameof(PrimaryCommand), nameof(OpenGameFolderCommand))]
     private InstalledGame? installed;
 
@@ -78,6 +103,7 @@ public sealed partial class GameViewModel : ObservableObject
     private string? remoteVersion;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SidebarText))]
     private double progressValue;
 
     [ObservableProperty]
@@ -89,9 +115,28 @@ public sealed partial class GameViewModel : ObservableObject
     [ObservableProperty]
     private bool canRollback;
 
+    [ObservableProperty]
+    private string? previousVersion;
+
     public bool IsBusy => State is GameState.Checking or GameState.Downloading or GameState.Verifying or GameState.Installing;
     public bool ShowProgress => State is GameState.Downloading or GameState.Verifying or GameState.Installing;
+    public bool ShowStatus => !ShowProgress;
+
+    /// <summary>The separate check button, hidden while the primary button already checks.</summary>
+    public bool ShowCheckButton => !IsBusy && PrimaryText != CheckText;
+    public bool IsFailed => State == GameState.Failed;
+    public bool HasInstall => Installed is not null;
     public string InstalledVersionText => Installed is null ? "未安装" : $"已安装 {Installed.Version}";
+    public string InstalledVersionShort => Installed?.Version ?? "未安装";
+
+    /// <summary>The one-line state under the game's name in the sidebar.</summary>
+    public string SidebarText => State switch
+    {
+        GameState.Downloading or GameState.Verifying => $"正在下载 · {ProgressValue:0}%",
+        GameState.Installing => "正在安装…",
+        GameState.Running => "运行中",
+        _ => InstalledVersionShort,
+    };
 
     public string PrimaryText => State switch
     {
@@ -102,8 +147,10 @@ public sealed partial class GameViewModel : ObservableObject
         GameState.Running => "游戏运行中",
         GameState.Failed when _available is not null => "重试",
         _ when Installed is not null => "开始游戏",
-        _ => "检查更新",
+        _ => CheckText,
     };
+
+    private const string CheckText = "检查更新";
 
     partial void OnSelectedChannelChanged(ChannelOption value)
     {
@@ -279,14 +326,13 @@ public sealed partial class GameViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(HasInstall))]
     private void OpenGameFolder() => _context.Platform.RevealDirectory(_updater.Layout.GameRoot);
 
-    private bool HasInstall() => Installed is not null;
-
     private async Task RefreshInstalledAsync()
     {
         Installed = await _updater.GetInstalledAsync(CancellationToken.None);
         var stateFile = await new VersionRepository(_updater.Layout).LoadAsync(CancellationToken.None);
         CanRollback = stateFile.PreviousGoodVersion is { } prev && prev != stateFile.ActiveVersion &&
                       Directory.Exists(_updater.Layout.VersionDirectory(prev));
+        PreviousVersion = CanRollback ? stateFile.PreviousGoodVersion : null;
     }
 
     /// <summary>Runs one state-machine step; failures keep whatever version is installed playable.</summary>
@@ -355,6 +401,21 @@ public sealed partial class GameViewModel : ObservableObject
         UpdateErrorCode.NoRollbackTarget => "没有可恢复的上一版本",
         _ => "更新失败",
     } + $"（{ex.Message}）";
+
+    private Bitmap? LoadIcon(string? path)
+    {
+        if (path is null) return null;
+        try
+        {
+            using var stream = AssetLoader.Open(new Uri($"avares://RhythmHub.Launcher/Assets/{path}"));
+            return new Bitmap(stream);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or ArgumentException)
+        {
+            _logger.LogWarning(ex, "Icon {Path} not found", path);
+            return null;
+        }
+    }
 
     private static string FormatSize(long bytes) => bytes switch
     {

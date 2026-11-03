@@ -5,27 +5,56 @@
         x:Class="RhythmHub.Launcher.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="RhythmHub"
-        Width="960" Height="600" MinWidth="720" MinHeight="460"
-        WindowStartupLocation="CenterScreen">
-  <Grid ColumnDefinitions="240,*" RowDefinitions="*,Auto">
+        Width="1100" Height="720" MinWidth="820" MinHeight="560"
+        WindowStartupLocation="CenterScreen"
+        Background="{DynamicResource WindowBrush}"
+        Foreground="{DynamicResource LabelBrush}"
+        FontSize="14">
+  <Grid ColumnDefinitions="260,*">
 
-    <!-- Game list -->
-    <Border Grid.Column="0" Grid.RowSpan="2"
-            Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
-      <DockPanel>
-        <TextBlock DockPanel.Dock="Top" Text="RhythmHub" FontSize="20" FontWeight="SemiBold" Margin="20,24,20,16" />
-        <ListBox ItemsSource="{Binding Games}" SelectedItem="{Binding SelectedGame}" Background="Transparent" Margin="8,0">
+    <!-- Sidebar -->
+    <Border Grid.Column="0" Background="{DynamicResource SidebarBrush}"
+            BorderBrush="{DynamicResource SidebarBorderBrush}" BorderThickness="0,0,1,0">
+      <DockPanel Margin="12,0,12,16">
+        <!-- Room for the macOS traffic lights when the content extends into the title bar. -->
+        <Panel x:Name="TitleBarSpacer" DockPanel.Dock="Top" Height="16" />
+        <TextBlock DockPanel.Dock="Top" Text="游戏" Classes="secondary" FontSize="11" FontWeight="SemiBold"
+                   Margin="10,0,10,6" />
+
+        <DockPanel DockPanel.Dock="Bottom" Margin="10,10,10,0">
+          <Button DockPanel.Dock="Right" Classes="link" Content="日志" FontSize="12"
+                  Command="{Binding OpenLogsCommand}" />
+          <TextBlock Text="{Binding LauncherVersionText}" Classes="secondary" FontSize="12" VerticalAlignment="Center" />
+        </DockPanel>
+
+        <Border DockPanel.Dock="Bottom" IsVisible="{Binding HasLauncherUpdate}"
+                Background="{DynamicResource FloatingCardBrush}" CornerRadius="12" Padding="12"
+                BoxShadow="0 1 2 0 #10000000">
+          <StackPanel Spacing="6">
+            <TextBlock FontWeight="SemiBold" Text="{Binding LauncherUpdateVersion, StringFormat='启动器有新版本 {0}'}" />
+            <TextBlock Text="{Binding LauncherUpdateText}" Classes="secondary" FontSize="12" TextWrapping="Wrap" />
+            <Button Classes="pill primary small" Content="重启更新" Margin="0,2,0,0"
+                    Command="{Binding RestartToUpdateCommand}" />
+          </StackPanel>
+        </Border>
+
+        <ListBox Classes="sidebar" ItemsSource="{Binding Games}" SelectedItem="{Binding SelectedGame}"
+                 Background="Transparent">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:GameViewModel">
-              <Grid ColumnDefinitions="Auto,*" Margin="4,6">
-                <Border Width="36" Height="36" CornerRadius="8"
-                        Background="{DynamicResource SystemAccentColor}">
-                  <TextBlock Text="{Binding Initial}" Foreground="White" FontWeight="Bold"
-                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+              <Grid ColumnDefinitions="Auto,*">
+                <Border Width="36" Height="36" CornerRadius="9" ClipToBounds="True">
+                  <Panel>
+                    <Border Background="{Binding Accent}" IsVisible="{Binding !HasIcon}">
+                      <TextBlock Text="{Binding Initial}" Foreground="White" FontWeight="Bold" FontSize="16"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <Image Source="{Binding Icon}" Stretch="UniformToFill" IsVisible="{Binding HasIcon}" />
+                  </Panel>
                 </Border>
-                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" Spacing="1">
                   <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" />
-                  <TextBlock Text="{Binding InstalledVersionText}" FontSize="12" Opacity="0.7" />
+                  <TextBlock Text="{Binding SidebarText}" Classes="secondary" FontSize="12" />
                 </StackPanel>
               </Grid>
             </DataTemplate>
@@ -35,64 +64,126 @@
     </Border>
 
     <!-- Selected game -->
-    <ContentControl Grid.Column="1" Content="{Binding SelectedGame}" Margin="40,36,40,20">
-      <ContentControl.ContentTemplate>
-        <DataTemplate x:DataType="vm:GameViewModel">
-          <DockPanel>
-            <StackPanel DockPanel.Dock="Top" Spacing="6">
-              <TextBlock Text="{Binding DisplayName}" FontSize="34" FontWeight="Bold" />
-              <TextBlock Text="{Binding Description}" Opacity="0.75" TextWrapping="Wrap" />
-              <TextBlock Text="{Binding InstalledVersionText}" Opacity="0.6" FontSize="13" />
-              <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
-                <TextBlock Text="更新频道" VerticalAlignment="Center" Opacity="0.75" />
-                <ComboBox MinWidth="180" ItemsSource="{Binding Channels}"
-                          SelectedItem="{Binding SelectedChannel}" IsEnabled="{Binding CanChangeChannel}">
-                  <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="services:ChannelOption">
-                      <TextBlock Text="{Binding Label}" />
-                    </DataTemplate>
-                  </ComboBox.ItemTemplate>
-                </ComboBox>
-              </StackPanel>
+    <ScrollViewer Grid.Column="1">
+      <ContentControl Content="{Binding SelectedGame}" Margin="48,44,48,32" MaxWidth="760" HorizontalAlignment="Left">
+        <ContentControl.ContentTemplate>
+          <DataTemplate x:DataType="vm:GameViewModel">
+            <StackPanel Spacing="28">
+
+              <!-- Header: tile, name, actions -->
+              <Grid ColumnDefinitions="Auto,*">
+                <Border Width="152" Height="152" CornerRadius="34" Background="{DynamicResource WindowBrush}"
+                        BoxShadow="0 12 32 0 #24000000">
+                  <Border CornerRadius="34" ClipToBounds="True">
+                    <Panel>
+                      <Border Background="{Binding Accent}" IsVisible="{Binding !HasIcon}">
+                        <TextBlock Text="{Binding Initial}" Foreground="White" FontSize="76" FontWeight="Bold"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                      </Border>
+                      <Image Source="{Binding Icon}" Stretch="UniformToFill" IsVisible="{Binding HasIcon}" />
+                    </Panel>
+                  </Border>
+                </Border>
+                <StackPanel Grid.Column="1" Margin="28,0,0,0" VerticalAlignment="Bottom" Spacing="6">
+                  <TextBlock Text="{Binding DisplayName}" FontSize="38" FontWeight="Bold" LetterSpacing="-0.8" />
+                  <TextBlock Text="{Binding Description}" Classes="secondary" FontSize="17" TextWrapping="Wrap" />
+                  <WrapPanel Margin="0,14,0,0" ItemSpacing="12" LineSpacing="12">
+                    <Button Classes="pill primary" Content="{Binding PrimaryText}" MinWidth="140"
+                            Command="{Binding PrimaryCommand}" />
+                    <Button Classes="pill" Content="取消" IsVisible="{Binding IsBusy}"
+                            Command="{Binding CancelCommand}" />
+                    <Button Classes="pill" Content="检查更新" IsVisible="{Binding ShowCheckButton}"
+                            Command="{Binding CheckCommand}" />
+                  </WrapPanel>
+                </StackPanel>
+              </Grid>
+
+              <!-- Status line -->
+              <TextBlock Text="{Binding StatusText}" IsVisible="{Binding ShowStatus}" FontSize="13"
+                         Classes="secondary" Classes.error="{Binding IsFailed}" TextWrapping="Wrap">
+                <TextBlock.Styles>
+                  <Style Selector="TextBlock.error">
+                    <Setter Property="Foreground" Value="{DynamicResource ErrorBrush}" />
+                  </Style>
+                </TextBlock.Styles>
+              </TextBlock>
+
+              <!-- Progress card -->
+              <Border IsVisible="{Binding ShowProgress}" Background="{DynamicResource CardBrush}"
+                      CornerRadius="14" Padding="22,20">
+                <StackPanel Spacing="14">
+                  <TextBlock Text="{Binding StatusText}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" />
+                  <ProgressBar Classes="thin" Minimum="0" Maximum="100" Value="{Binding ProgressValue}"
+                               IsIndeterminate="{Binding IsProgressIndeterminate}" />
+                  <TextBlock Text="{Binding ProgressText}" Classes="secondary" FontSize="13" />
+                </StackPanel>
+              </Border>
+
+              <!-- Details, grouped like system settings -->
+              <Border Background="{DynamicResource CardBrush}" CornerRadius="14" ClipToBounds="True">
+                <StackPanel>
+                  <Grid Classes="row" ColumnDefinitions="*,Auto">
+                    <TextBlock Text="更新频道" FontWeight="Medium" VerticalAlignment="Center" />
+                    <ListBox Grid.Column="1" Classes="segmented" Margin="0,8"
+                             ItemsSource="{Binding Channels}" SelectedItem="{Binding SelectedChannel}"
+                             IsEnabled="{Binding CanChangeChannel}">
+                      <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                      </ListBox.ItemsPanel>
+                      <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="services:ChannelOption">
+                          <TextBlock Text="{Binding ShortLabel}" />
+                        </DataTemplate>
+                      </ListBox.ItemTemplate>
+                    </ListBox>
+                  </Grid>
+
+                  <Border Classes="separator" />
+                  <Grid Classes="row" ColumnDefinitions="*,Auto">
+                    <TextBlock Text="已安装版本" FontWeight="Medium" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Text="{Binding InstalledVersionShort}" Classes="secondary"
+                               VerticalAlignment="Center" />
+                  </Grid>
+
+                  <StackPanel IsVisible="{Binding RemoteVersion, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <Border Classes="separator" />
+                    <Grid Classes="row" ColumnDefinitions="*,Auto">
+                      <TextBlock Text="最新版本" FontWeight="Medium" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="1" Text="{Binding RemoteVersion}" Classes="secondary"
+                                 VerticalAlignment="Center" />
+                    </Grid>
+                  </StackPanel>
+
+                  <StackPanel IsVisible="{Binding CanRollback}">
+                    <Border Classes="separator" />
+                    <Grid Classes="row" ColumnDefinitions="*,Auto,Auto">
+                      <TextBlock Text="上一版本" FontWeight="Medium" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="1" Text="{Binding PreviousVersion}" Classes="secondary"
+                                 VerticalAlignment="Center" />
+                      <Button Grid.Column="2" Classes="link" Content="恢复" Margin="14,0,0,0"
+                              VerticalAlignment="Center" Command="{Binding RollbackCommand}" />
+                    </Grid>
+                  </StackPanel>
+
+                  <StackPanel IsVisible="{Binding HasInstall}">
+                    <Border Classes="separator" />
+                    <Grid Classes="row" ColumnDefinitions="Auto,*,Auto">
+                      <TextBlock Text="安装位置" FontWeight="Medium" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="1" Text="{Binding GameFolderText}" Classes="secondary"
+                                 TextTrimming="PathSegmentEllipsis" HorizontalAlignment="Right"
+                                 VerticalAlignment="Center" Margin="16,0,0,0" />
+                      <Button Grid.Column="2" Classes="link" Content="{Binding RevealFolderText}" Margin="14,0,0,0"
+                              VerticalAlignment="Center" Command="{Binding OpenGameFolderCommand}" />
+                    </Grid>
+                  </StackPanel>
+                </StackPanel>
+              </Border>
             </StackPanel>
-
-            <StackPanel DockPanel.Dock="Bottom" Spacing="12">
-              <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" />
-              <StackPanel Spacing="4" IsVisible="{Binding ShowProgress}">
-                <ProgressBar Minimum="0" Maximum="100" Height="8"
-                             Value="{Binding ProgressValue}"
-                             IsIndeterminate="{Binding IsProgressIndeterminate}" />
-                <TextBlock Text="{Binding ProgressText}" FontSize="12" Opacity="0.7" />
-              </StackPanel>
-              <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button Classes="accent" MinWidth="140" Height="40" FontSize="16"
-                        HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                        Content="{Binding PrimaryText}" Command="{Binding PrimaryCommand}" />
-                <Button Content="取消" Height="40" VerticalContentAlignment="Center"
-                        IsVisible="{Binding IsBusy}" Command="{Binding CancelCommand}" />
-                <Button Content="检查更新" Height="40" VerticalContentAlignment="Center"
-                        Command="{Binding CheckCommand}" />
-                <Button Content="恢复上一版本" Height="40" VerticalContentAlignment="Center"
-                        IsVisible="{Binding CanRollback}" Command="{Binding RollbackCommand}" />
-                <Button Content="打开游戏目录" Height="40" VerticalContentAlignment="Center"
-                        Command="{Binding OpenGameFolderCommand}" />
-              </StackPanel>
-            </StackPanel>
-
-            <Panel />
-          </DockPanel>
-        </DataTemplate>
-      </ContentControl.ContentTemplate>
-    </ContentControl>
-
-    <!-- Footer -->
-    <DockPanel Grid.Column="1" Grid.Row="1" Margin="40,0,40,16">
-      <Button DockPanel.Dock="Right" Content="打开日志" Classes="subtle" Command="{Binding OpenLogsCommand}" />
-      <Button DockPanel.Dock="Right" Content="重启更新" Classes="accent" Margin="0,0,8,0"
-              IsVisible="{Binding HasLauncherUpdate}" Command="{Binding RestartToUpdateCommand}" />
-      <TextBlock DockPanel.Dock="Right" Text="{Binding LauncherUpdateText}" Margin="0,0,12,0"
-                 VerticalAlignment="Center" FontSize="12" IsVisible="{Binding HasLauncherUpdate}" />
-      <TextBlock Text="{Binding LauncherVersionText}" Opacity="0.5" FontSize="12" VerticalAlignment="Center" />
-    </DockPanel>
+          </DataTemplate>
+        </ContentControl.ContentTemplate>
+      </ContentControl>
+    </ScrollViewer>
   </Grid>
 </Window>

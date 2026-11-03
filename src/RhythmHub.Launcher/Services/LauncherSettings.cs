@@ -3,12 +3,13 @@ using System.Text.Json;
 namespace RhythmHub.Launcher.Services;
 
 /// <summary>A release channel the player can pick for a game.</summary>
-public sealed record ChannelOption(string Id, string Label)
+/// <param name="ShortLabel">The label in the segmented channel switch.</param>
+public sealed record ChannelOption(string Id, string Label, string ShortLabel)
 {
     public static readonly IReadOnlyList<ChannelOption> All =
     [
-        new("stable", "稳定版"),
-        new("nightly", "每日构建（Nightly）"),
+        new("stable", "稳定版", "稳定版"),
+        new("nightly", "每日构建（Nightly）", "每日构建"),
     ];
 
     public static ChannelOption Find(string id) => All.FirstOrDefault(c => c.Id == id) ?? All[0];
