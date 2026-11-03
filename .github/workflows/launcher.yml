@@ -8,7 +8,7 @@ run-name: Launcher ${{ github.ref_name }}
 
 on:
   push:
-    branches: [main, rhythmhub]
+    branches: [main]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
