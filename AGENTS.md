@@ -32,6 +32,7 @@ tools/fake-game/main.c           native stand-in player for pipeline tests
 .github/actions/upload-build/    composite action the game repositories call
 .github/workflows/               publish-game.yml (manual publish / rollback), test-pipeline.yml (regression)
 infra/aws/                       CloudFormation for the GitHub OIDC role
+site/                            static intro page (Chinese, Apple-style); not hosted yet
 ```
 
 ## Commands
