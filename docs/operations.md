@@ -51,8 +51,8 @@
 | S3 + CloudFront + 域名 + 费用告警 | ✅ 完成 |
 | CI 角色、各仓库 Variables / Secrets | ✅ 三个仓库都已配置（见 §3） |
 | RhythmHub 手动发布、回归测试工作流 | ✅ 已用 PipelineTest 在真实环境验证 |
-| OurTaikoPlay 自动发布 | ✅ 已合并（OurTaiko/OurTaikoPlay#49）。首个 nightly `1.0-400` 已自动上线；从 CDN 安装的 Mac 版与 GitHub Release 的 zip 逐文件一致（218 个文件） |
-| MajdataPlay 自动发布 | 🟡 已合并（TeamMajdata/MajdataPlay#375）。Windows nightly `2.1.0-6d68d84` 已上线；macOS 首次运行时自建 Mac 磁盘耗尽而失败（见 §7.1），缩减占用的修复在 #376，需先清理那台 Mac 的磁盘 |
+| OurTaikoPlay 自动发布 | ✅ 已合并（OurTaiko/OurTaikoPlay#49）。stable `1.0.0-400`（`v1.0.0` 标签）、nightly `1.0.0-404` 已上线；nightly 切 stable 实测复用 193 MB、只下载 87 MB。构建前会清理 runner 磁盘（#51） |
+| MajdataPlay 自动发布 | ✅ 已合并（TeamMajdata/MajdataPlay#375、#376）。nightly `2.1.0-383a72b` 两个平台都已上线；Mac 版经更新核心从 CDN 安装验证通过（587 MB，codesign 有效）。还没打过 `v*`，所以暂无 stable |
 | 游戏 Mac 版苹果签名 / 公证 | ⏳ 未做（通过启动器安装不受 Gatekeeper 隔离影响） |
 | 启动器 Velopack 打包、自更新 | ✅ `v1.0.0` 已发布到 CDN 和 GitHub Release（见 §8）；CDN 与 GitHub 的 Mac 便携包一致，运行后自更新检查正常 |
 | 启动器 macOS 签名公证 | ⏳ 等 RhythmHub 配好 §8.3 的 Apple Secrets；未配置时 Mac 包不签名 |

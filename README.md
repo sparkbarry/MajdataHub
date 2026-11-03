@@ -120,6 +120,6 @@ git tag v1.0.2 && git push origin v1.0.2
 - [x] 协议 v2：S3 上按版本平铺文件、签名的频道指针 + 文件清单、文件级增量更新（计划书 V1.1）
 - [x] 阶段 C：S3 + CloudFront 发布、游戏 CI 自动上线（OurTaikoPlay、MajdataPlay）、Velopack 打包与自更新、启动器 CI、稳定版 / 每日构建频道切换
 - [ ] 启动器代码签名 / 公证（macOS 需要 Developer ID 证书，Windows 暂不签）、应用图标
-- [ ] 游戏 Mac 版公证；MajdataPlay 的 macOS nightly 待自建 Mac 的 runner 恢复后上线
+- [ ] 游戏 Mac 版公证
 
 当前状态以 [docs/operations.md §0.3](docs/operations.md) 为准。
