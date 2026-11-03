@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RhythmHub</title>
-<meta name="description" content="RhythmHub：一个启动器安装、更新和启动 MajdataPlay 与 OurTaikoPlay。支持 Windows 与 macOS。">
+<meta name="description" content="安装、更新、启动 MajdataPlay 和 OurTaikoPlay 的启动器，支持 Windows 和 macOS。">
 <meta name="color-scheme" content="light dark">
 <style>
   :root {
@@ -77,12 +77,9 @@
   .pill.small { min-height: 28px; padding: 0 12px; font-size: 12px; color: #fff; }
   .pill.ghost { background: transparent; color: var(--link); border: 1px solid var(--link); }
   .pill.ghost:hover { background: color-mix(in srgb, var(--link) 8%, transparent); }
-  .more { font-size: 17px; }
-  .more::after { content: " ›"; }
 
   /* Hero */
   .hero { text-align: center; padding: 88px 0 24px; }
-  .hero .eyebrow { font-size: 21px; font-weight: 600; color: var(--secondary); margin: 0 0 6px; }
   .hero h1 { font-size: clamp(40px, 7vw, 80px); line-height: 1.05; font-weight: 700; letter-spacing: -0.03em; margin: 0; }
   .hero p.lead { font-size: clamp(19px, 2.4vw, 24px); color: var(--secondary); max-width: 640px; margin: 18px auto 0; line-height: 1.35; }
   .hero .actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 14px 28px; margin-top: 30px; }
@@ -138,6 +135,7 @@
   .source code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13px; background: var(--fill); border-radius: 6px; padding: 1px 6px; word-break: break-all; }
   .first-run { max-width: 760px; margin: 40px auto 0; font-size: 15px; color: var(--secondary); }
   .first-run h4 { color: var(--label); font-size: 17px; margin: 0 0 8px; }
+  .first-run p { margin: 0 0 6px; }
   .first-run ul { margin: 0; padding-left: 20px; }
 
   footer { padding: 28px 0 40px; font-size: 12px; color: var(--secondary); border-top: 1px solid var(--separator); background: var(--bg-alt); }
@@ -170,14 +168,12 @@
 <main>
   <header class="hero">
     <div class="wrap">
-      <p class="eyebrow">RhythmHub</p>
-      <h1>节奏游戏，<br>一处安装。</h1>
-      <p class="lead">一个启动器装好 MajdataPlay 和 OurTaikoPlay。自动更新，只下载变化的部分，出问题一键回到上一版。</p>
+      <h1>RhythmHub</h1>
+      <p class="lead">安装、更新和启动 MajdataPlay 与 OurTaikoPlay。</p>
       <div class="actions">
-        <a class="pill" id="hero-download" href="#download">免费下载</a>
-        <a class="more" href="#features">了解功能</a>
+        <a class="pill" id="hero-download" href="#download">下载</a>
       </div>
-      <p class="note">支持 Windows（x64）与 macOS（Apple 芯片）</p>
+      <p class="note">Windows x64 · macOS Apple 芯片</p>
     </div>
     <div class="wrap">
       <picture class="shot">
@@ -190,38 +186,37 @@
 
   <section class="band alt" id="features">
     <div class="wrap">
-      <h2>更新这件事，交给它。</h2>
-      <p class="sub">游戏有新版本时，RhythmHub 会算出哪些文件变了，只下载那一部分，并在安装前逐个校验。</p>
+      <h2>功能</h2>
       <div class="grid">
         <div class="tile">
           <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4v17M9 14l7 7 7-7M6 27h20"/></svg>
-          <h3>只下载变化的部分</h3>
-          <p>本地没变的文件直接复用。一次几百 MB 的游戏更新，往往只需要下载其中一小部分。</p>
+          <h3>增量更新</h3>
+          <p>只下载有变化的文件，其余直接复用本地文件。</p>
         </div>
         <div class="tile">
           <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h16v20H8z"/><path d="M12 16h8M16 12v8"/><path d="M4 16h4M24 16h4"/></svg>
           <h3>断点续传</h3>
-          <p>下载可以随时暂停或取消，网络断了也不怕，下次从断开的地方接着下。</p>
+          <p>下载可以暂停，中断后从断点继续。</p>
         </div>
         <div class="tile">
           <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4l10 4v7c0 6.5-4.3 11.2-10 13-5.7-1.8-10-6.5-10-13V8z"/><path d="M11.5 16l3.2 3.2 6-6.4"/></svg>
           <h3>签名校验</h3>
-          <p>每个版本都附带签名清单，文件逐个核对哈希，对不上的一律不装。</p>
+          <p>版本清单带签名，每个文件安装前校验哈希。</p>
         </div>
         <div class="tile">
           <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 11h13a6 6 0 010 12H12"/><path d="M12 6l-5 5 5 5"/></svg>
-          <h3>一键回到上一版</h3>
-          <p>新版本启动失败？点「恢复」就回到上一个能用的版本，不用重新下载。</p>
+          <h3>版本回退</h3>
+          <p>新版本有问题时，可以恢复到上一个版本，无需重新下载。</p>
         </div>
         <div class="tile">
           <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10" width="24" height="12" rx="6"/><rect x="16" y="12" width="10" height="8" rx="4" fill="currentColor" stroke="none"/></svg>
-          <h3>稳定版或每日构建</h3>
-          <p>每个游戏单独选择更新频道：想稳就选稳定版，想尝鲜就切到每日构建。</p>
+          <h3>更新频道</h3>
+          <p>每个游戏可以单独选择稳定版或每日构建。</p>
         </div>
         <div class="tile">
           <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M26 16a10 10 0 11-3-7.1"/><path d="M26 5v6h-6"/></svg>
-          <h3>启动器自己也会更新</h3>
-          <p>RhythmHub 在后台下载自己的新版本，下次启动时自动换上，只下载增量部分。</p>
+          <h3>自动更新</h3>
+          <p>启动器在后台下载新版本，重启后生效。</p>
         </div>
       </div>
     </div>
@@ -229,8 +224,7 @@
 
   <section class="band" id="games">
     <div class="wrap">
-      <h2>现在就能玩。</h2>
-      <p class="sub">两款节奏游戏，Windows 和 Mac 都有。</p>
+      <h2>游戏</h2>
       <div class="games">
         <div class="game">
           <img src="images/majdataplay.png" width="256" height="256" alt="MajdataPlay 图标">
@@ -253,12 +247,12 @@
         <figure>
           <img src="images/app-install.png" width="1800" height="1236" loading="lazy"
                alt="浅色模式下的 RhythmHub：MajdataPlay 尚未安装，显示安装按钮和 587.3 MB 的下载大小">
-          <figcaption>点一下就装好，大小提前告诉你。</figcaption>
+          <figcaption>安装前显示下载大小</figcaption>
         </figure>
         <figure>
           <img src="images/app-dark.png" width="1800" height="1236" loading="lazy"
                alt="深色模式下的 RhythmHub：OurTaikoPlay 有新的每日构建，需下载 87.1 MB，完整大小 279.9 MB">
-          <figcaption>跟随系统深色模式。更新时只下载变化的 87 MB。</figcaption>
+          <figcaption>深色模式</figcaption>
         </figure>
       </div>
     </div>
@@ -266,59 +260,59 @@
 
   <section class="band alt" id="download">
     <div class="wrap">
-      <h2>下载 RhythmHub</h2>
-      <p class="sub">免费。装一次就好，以后的更新都会自动完成。</p>
+      <h2>下载</h2>
+      <p class="sub">安装后会自动更新。</p>
 
       <div class="platforms">
         <div class="platform" id="dl-mac">
           <div class="os">
             <svg viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="24" height="16" rx="2"/><path d="M10 26h10M15 21v5"/></svg>
             <h3>macOS</h3>
-            <span class="badge">推荐给你</span>
+            <span class="badge">当前系统</span>
           </div>
           <p class="req">Apple 芯片（M 系列）</p>
           <a class="pill" href="https://distrib.sparkbarry.com/RhythmHub/MacOS/RhythmHub-osx-Setup.pkg">下载安装包 (.pkg)</a>
           <ul>
-            <li>便携版，解压即用 <a href="https://distrib.sparkbarry.com/RhythmHub/MacOS/RhythmHub-osx-Portable.zip">.zip</a></li>
-            <li>安装包大小 <span>约 48 MB</span></li>
+            <li>便携版 <a href="https://distrib.sparkbarry.com/RhythmHub/MacOS/RhythmHub-osx-Portable.zip">.zip</a></li>
+            <li>大小 <span>约 48 MB</span></li>
           </ul>
         </div>
         <div class="platform" id="dl-win">
           <div class="os">
             <svg viewBox="0 0 30 30" fill="currentColor" aria-hidden="true"><path d="M4 7l9-1.3V14H4zM14.5 5.5L26 4v10H14.5zM4 15.5h9v8.8L4 23zM14.5 15.5H26V26l-11.5-1.6z"/></svg>
             <h3>Windows</h3>
-            <span class="badge">推荐给你</span>
+            <span class="badge">当前系统</span>
           </div>
           <p class="req">64 位（x64）</p>
           <a class="pill" href="https://distrib.sparkbarry.com/RhythmHub/Windows/RhythmHub-win-Setup.exe">下载安装程序 (.exe)</a>
           <ul>
-            <li>便携版，解压即用 <a href="https://distrib.sparkbarry.com/RhythmHub/Windows/RhythmHub-win-Portable.zip">.zip</a></li>
-            <li>安装程序大小 <span>约 59 MB</span></li>
+            <li>便携版 <a href="https://distrib.sparkbarry.com/RhythmHub/Windows/RhythmHub-win-Portable.zip">.zip</a></li>
+            <li>大小 <span>约 59 MB</span></li>
           </ul>
         </div>
       </div>
 
       <div class="sources">
         <div class="source">
-          <h4>CDN 直链（推荐）</h4>
-          <p>上面的按钮都来自 CDN，始终指向最新版本。也可以直接复制：<br>
+          <h4>CDN</h4>
+          <p>上方按钮的下载地址，始终指向最新版本：<br>
             <code>https://distrib.sparkbarry.com/RhythmHub/MacOS/RhythmHub-osx-Setup.pkg</code><br>
             <code>https://distrib.sparkbarry.com/RhythmHub/Windows/RhythmHub-win-Setup.exe</code></p>
         </div>
         <div class="source">
           <h4>GitHub Releases</h4>
-          <p>每个版本的安装包也会发布在 GitHub，文件名带版本号（如 <code>RhythmHub_1.0.2_aarch64.pkg</code>、<code>RhythmHub_1.0.2_x64-setup.exe</code>），适合下载指定版本。</p>
-          <p style="margin-top: 14px"><a class="pill ghost" href="https://github.com/sparkbarry/RhythmHub/releases/latest">前往 GitHub 下载</a></p>
+          <p>各版本的安装包，文件名带版本号，例如 <code>RhythmHub_1.0.2_aarch64.pkg</code>。</p>
+          <p style="margin-top: 14px"><a class="pill ghost" href="https://github.com/sparkbarry/RhythmHub/releases/latest">查看所有版本</a></p>
         </div>
       </div>
 
       <div class="first-run">
-        <h4>第一次打开被系统拦截？</h4>
+        <h4>首次打开</h4>
+        <p>安装包暂未签名，首次打开会被系统拦截，每台电脑只需处理一次：</p>
         <ul>
-          <li>macOS：先打开一次，看到「无法打开」后，到「系统设置 → 隐私与安全性」底部点「仍要打开」。</li>
-          <li>Windows：SmartScreen 弹出提示时，点「更多信息 → 仍要运行」。</li>
+          <li>macOS：打开一次后，在「系统设置 → 隐私与安全性」中点「仍要打开」。</li>
+          <li>Windows：在 SmartScreen 提示中点「更多信息 → 仍要运行」。</li>
         </ul>
-        <p>安装包暂未签名，每台电脑只需操作一次，之后的自动更新不受影响。</p>
       </div>
     </div>
   </section>
@@ -326,7 +320,7 @@
 
 <footer>
   <div class="wrap">
-    <span>RhythmHub · 节奏游戏启动器</span>
+    <span>RhythmHub</span>
     <span><a href="https://github.com/sparkbarry/RhythmHub">GitHub</a> · <a href="https://github.com/sparkbarry/RhythmHub/releases">版本历史</a></span>
   </div>
 </footer>
@@ -343,7 +337,7 @@
     if (card !== first) card.parentNode.insertBefore(card, first);
     var hero = document.getElementById('hero-download');
     hero.href = card.querySelector('.pill').href;
-    hero.textContent = platform === 'mac' ? '下载 Mac 版' : '下载 Windows 版';
+    hero.textContent = platform === 'mac' ? '下载 macOS 版' : '下载 Windows 版';
   })();
 </script>
 </body>
