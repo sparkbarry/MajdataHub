@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="Sidebar_Games" xml:space="preserve"><value>ゲーム</value></data>
+  <data name="Logs" xml:space="preserve"><value>ログ</value></data>
+  <data name="Language" xml:space="preserve"><value>言語</value></data>
+  <data name="Language_System" xml:space="preserve"><value>システム</value></data>
+  <data name="Language_RestartHint" xml:space="preserve"><value>RhythmHub を再起動すると適用されます</value></data>
+  <data name="Launcher_UpdateAvailable" xml:space="preserve"><value>RhythmHub {0} があります</value></data>
+  <data name="Launcher_UpdateReady" xml:space="preserve"><value>ダウンロード済み。再起動後に適用されます</value></data>
+  <data name="Launcher_RestartToUpdate" xml:space="preserve"><value>再起動して更新</value></data>
+  <data name="Launcher_WaitForGames" xml:space="preserve"><value>ゲームのダウンロードやインストールが終わるまでお待ちください</value></data>
+  <data name="AlreadyRunning" xml:space="preserve"><value>RhythmHub はすでに起動しています。</value></data>
+  <data name="OK" xml:space="preserve"><value>OK</value></data>
+  <data name="Channel_Stable" xml:space="preserve"><value>安定版</value></data>
+  <data name="Channel_Nightly" xml:space="preserve"><value>ナイトリー</value></data>
+  <data name="Channel_NightlyShort" xml:space="preserve"><value>ナイトリー</value></data>
+  <data name="Label_Channel" xml:space="preserve"><value>アップデートチャンネル</value></data>
+  <data name="Label_InstalledVersion" xml:space="preserve"><value>インストール済みのバージョン</value></data>
+  <data name="Label_LatestVersion" xml:space="preserve"><value>最新バージョン</value></data>
+  <data name="Label_PreviousVersion" xml:space="preserve"><value>前のバージョン</value></data>
+  <data name="Label_Location" xml:space="preserve"><value>インストール先</value></data>
+  <data name="RevealInFinder" xml:space="preserve"><value>Finder で表示</value></data>
+  <data name="RevealInExplorer" xml:space="preserve"><value>エクスプローラーで表示</value></data>
+  <data name="NotInstalled" xml:space="preserve"><value>未インストール</value></data>
+  <data name="Sidebar_Downloading" xml:space="preserve"><value>ダウンロード中 · {0}%</value></data>
+  <data name="Sidebar_Installing" xml:space="preserve"><value>インストール中…</value></data>
+  <data name="Sidebar_Running" xml:space="preserve"><value>実行中</value></data>
+  <data name="Action_Play" xml:space="preserve"><value>プレイ</value></data>
+  <data name="Action_Install" xml:space="preserve"><value>インストール</value></data>
+  <data name="Action_Update" xml:space="preserve"><value>アップデート</value></data>
+  <data name="Action_Checking" xml:space="preserve"><value>確認中…</value></data>
+  <data name="Action_Updating" xml:space="preserve"><value>アップデート中…</value></data>
+  <data name="Action_Running" xml:space="preserve"><value>実行中</value></data>
+  <data name="Action_Retry" xml:space="preserve"><value>再試行</value></data>
+  <data name="Action_CheckForUpdates" xml:space="preserve"><value>アップデートを確認</value></data>
+  <data name="Action_Cancel" xml:space="preserve"><value>キャンセル</value></data>
+  <data name="Action_Restore" xml:space="preserve"><value>復元</value></data>
+  <data name="Status_Checking" xml:space="preserve"><value>アップデートを確認しています…</value></data>
+  <data name="Status_UpToDate" xml:space="preserve"><value>最新バージョンです（{0}）</value></data>
+  <data name="Size_Resumable" xml:space="preserve"><value>{0} ダウンロード済み、再開できます</value></data>
+  <data name="Size_Delta" xml:space="preserve"><value>ダウンロード {0}、合計 {1}</value></data>
+  <data name="Status_CanInstall" xml:space="preserve"><value>{0} をインストールできます（{1}）</value></data>
+  <data name="Status_ChannelLatest" xml:space="preserve"><value>{0}の最新は {1}（{2}）</value></data>
+  <data name="Status_Downloading" xml:space="preserve"><value>{0} をダウンロードしています…</value></data>
+  <data name="Status_Reusing" xml:space="preserve"><value>変更のないローカルファイルを再利用しています…</value></data>
+  <data name="Status_Installing" xml:space="preserve"><value>{0} をインストールしています…</value></data>
+  <data name="Status_Installed" xml:space="preserve"><value>{0} をインストールしました</value></data>
+  <data name="Status_AlreadyRunning" xml:space="preserve"><value>{0} はすでに起動しています</value></data>
+  <data name="Status_Launching" xml:space="preserve"><value>{0} を起動しています…</value></data>
+  <data name="Status_Launched" xml:space="preserve"><value>{0} を起動しました</value></data>
+  <data name="Status_LaunchFailedRollback" xml:space="preserve"><value>{0} が正しく起動しませんでした。「前のバージョン」の「復元」で戻せます。</value></data>
+  <data name="Status_LaunchFailed" xml:space="preserve"><value>{0} が正しく起動しませんでした。ログを確認するか、再インストールしてください。</value></data>
+  <data name="Status_LaunchTimedOut" xml:space="preserve"><value>{0} は起動しましたが、{1} 分以内に準備完了になりませんでした。</value></data>
+  <data name="Status_LaunchTimedOutRollback" xml:space="preserve"><value>問題がある場合は前のバージョンに戻せます。</value></data>
+  <data name="Status_LaunchError" xml:space="preserve"><value>起動できませんでした：{0}</value></data>
+  <data name="Status_RollingBack" xml:space="preserve"><value>前のバージョンを復元しています…</value></data>
+  <data name="Status_RolledBack" xml:space="preserve"><value>{0} に戻しました</value></data>
+  <data name="Status_TimedOut" xml:space="preserve"><value>接続がタイムアウトしました。しばらくしてから再試行してください。</value></data>
+  <data name="Status_Paused" xml:space="preserve"><value>一時停止しました。もう一度クリックすると再開します。</value></data>
+  <data name="Status_Cancelled" xml:space="preserve"><value>キャンセルしました</value></data>
+  <data name="Status_ChannelEmpty" xml:space="preserve"><value>{0}にはまだリリースがありません。別のチャンネルをお試しください。</value></data>
+  <data name="Status_Error" xml:space="preserve"><value>エラーが発生しました：{0}</value></data>
+  <data name="Status_OfflineHint" xml:space="preserve"><value>インストール済みの {0} はプレイできます。</value></data>
+  <data name="Error_Detail" xml:space="preserve"><value>{0}（{1}）</value></data>
+  <data name="Error_Network" xml:space="preserve"><value>アップデートサーバーに接続できません</value></data>
+  <data name="Error_Timeout" xml:space="preserve"><value>ネットワークがタイムアウトしました。ダウンロード済みの分は保持され、再開できます</value></data>
+  <data name="Error_RateLimited" xml:space="preserve"><value>アップデートサーバーが混み合っています。しばらくしてから再試行してください</value></data>
+  <data name="Error_PackageNotFound" xml:space="preserve"><value>サーバーにこのバージョンのファイルがありません</value></data>
+  <data name="Error_SignatureInvalid" xml:space="preserve"><value>アップデートマニフェストの署名が無効なため、拒否しました</value></data>
+  <data name="Error_ManifestNotFound" xml:space="preserve"><value>このゲームのリリースはまだありません</value></data>
+  <data name="Error_ManifestInvalid" xml:space="preserve"><value>アップデートマニフェストが無効です</value></data>
+  <data name="Error_LauncherTooOld" xml:space="preserve"><value>先に RhythmHub をアップデートしてください</value></data>
+  <data name="Error_InsufficientDiskSpace" xml:space="preserve"><value>ディスクの空き容量が足りません</value></data>
+  <data name="Error_DownloadIncomplete" xml:space="preserve"><value>ダウンロードが完了していません。再試行してください</value></data>
+  <data name="Error_HashMismatch" xml:space="preserve"><value>ファイルの検証に失敗しました。再試行してください</value></data>
+  <data name="Error_InvalidPackage" xml:space="preserve"><value>パッケージが無効です</value></data>
+  <data name="Error_GameRunning" xml:space="preserve"><value>アップデートの前にゲームを終了してください</value></data>
+  <data name="Error_NoRollbackTarget" xml:space="preserve"><value>復元できる前のバージョンがありません</value></data>
+  <data name="Error_UpdateFailed" xml:space="preserve"><value>アップデートに失敗しました</value></data>
+</root>

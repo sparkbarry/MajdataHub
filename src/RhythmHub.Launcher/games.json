@@ -5,18 +5,26 @@
     {
       "id": "MajdataPlay",
       "displayName": "MajdataPlay",
-      "description": "maimai 风格的街机节奏游戏模拟器。",
+      "description": "A maimai-style arcade rhythm game simulator.",
       "color": "#5E5CE6",
       "icon": "Games/MajdataPlay.png",
-      "healthCheck": false
+      "healthCheck": false,
+      "descriptions": {
+        "zh": "maimai 风格的街机节奏游戏模拟器。",
+        "ja": "maimai 風のアーケード音楽ゲームシミュレーター。"
+      }
     },
     {
       "id": "OurTaikoPlay",
       "displayName": "OurTaikoPlay",
-      "description": "太鼓风格的节奏游戏。",
+      "description": "A taiko-style rhythm game.",
       "color": "#E5532D",
       "icon": "Games/OurTaikoPlay.png",
-      "healthCheck": false
+      "healthCheck": false,
+      "descriptions": {
+        "zh": "太鼓风格的节奏游戏。",
+        "ja": "太鼓風のリズムゲーム。"
+      }
     }
   ]
 }

@@ -5,6 +5,7 @@ using Avalonia.Platform;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using RhythmHub.Launcher.Resources;
 using RhythmHub.Launcher.Services;
 using RhythmHub.Updater;
 using RhythmHub.Updater.Models;
@@ -44,7 +45,7 @@ public sealed partial class GameViewModel : ObservableObject
         _entry = entry;
         Id = entry.Id;
         DisplayName = entry.DisplayName;
-        Description = entry.Description ?? "";
+        Description = entry.LocalizedDescription;
         Accent = Brush.Parse(entry.Color ?? "#0071E3");
         Icon = LoadIcon(entry.Icon);
         _updater = new GameUpdateService(entry.Id, context.Options, context.Http, context.Platform, context.Loggers);
@@ -74,7 +75,7 @@ public sealed partial class GameViewModel : ObservableObject
         }
     }
 
-    public string RevealFolderText => OperatingSystem.IsMacOS() ? "在访达中显示" : "在资源管理器中显示";
+    public string RevealFolderText => OperatingSystem.IsMacOS() ? Strings.RevealInFinder : Strings.RevealInExplorer;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBusy), nameof(PrimaryText), nameof(ShowProgress), nameof(ShowStatus), nameof(CanChangeChannel),
@@ -94,7 +95,7 @@ public sealed partial class GameViewModel : ObservableObject
     private string statusText = "";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(InstalledVersionText), nameof(InstalledVersionShort), nameof(PrimaryText), nameof(SidebarText),
+    [NotifyPropertyChangedFor(nameof(InstalledVersionShort), nameof(PrimaryText), nameof(SidebarText),
         nameof(HasInstall), nameof(ShowCheckButton))]
     [NotifyCanExecuteChangedFor(nameof(PrimaryCommand), nameof(OpenGameFolderCommand))]
     private InstalledGame? installed;
@@ -126,31 +127,30 @@ public sealed partial class GameViewModel : ObservableObject
     public bool ShowCheckButton => !IsBusy && PrimaryText != CheckText;
     public bool IsFailed => State == GameState.Failed;
     public bool HasInstall => Installed is not null;
-    public string InstalledVersionText => Installed is null ? "未安装" : $"已安装 {Installed.Version}";
-    public string InstalledVersionShort => Installed?.Version ?? "未安装";
+    public string InstalledVersionShort => Installed?.Version ?? Strings.NotInstalled;
 
     /// <summary>The one-line state under the game's name in the sidebar.</summary>
     public string SidebarText => State switch
     {
-        GameState.Downloading or GameState.Verifying => $"正在下载 · {ProgressValue:0}%",
-        GameState.Installing => "正在安装…",
-        GameState.Running => "运行中",
+        GameState.Downloading or GameState.Verifying => string.Format(Strings.Sidebar_Downloading, ProgressValue.ToString("0")),
+        GameState.Installing => Strings.Sidebar_Installing,
+        GameState.Running => Strings.Sidebar_Running,
         _ => InstalledVersionShort,
     };
 
     public string PrimaryText => State switch
     {
-        GameState.UpdateAvailable when Installed is null => "安装",
-        GameState.UpdateAvailable => "更新",
-        GameState.Checking => "检查中…",
-        GameState.Downloading or GameState.Verifying or GameState.Installing => "更新中…",
-        GameState.Running => "游戏运行中",
-        GameState.Failed when _available is not null => "重试",
-        _ when Installed is not null => "开始游戏",
+        GameState.UpdateAvailable when Installed is null => Strings.Action_Install,
+        GameState.UpdateAvailable => Strings.Action_Update,
+        GameState.Checking => Strings.Action_Checking,
+        GameState.Downloading or GameState.Verifying or GameState.Installing => Strings.Action_Updating,
+        GameState.Running => Strings.Action_Running,
+        GameState.Failed when _available is not null => Strings.Action_Retry,
+        _ when Installed is not null => Strings.Action_Play,
         _ => CheckText,
     };
 
-    private const string CheckText = "检查更新";
+    private static string CheckText => Strings.Action_CheckForUpdates;
 
     partial void OnSelectedChannelChanged(ChannelOption value)
     {
@@ -199,25 +199,25 @@ public sealed partial class GameViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanCheck))]
     private async Task CheckAsync()
     {
-        await RunAsync(GameState.Checking, "正在检查更新…", CheckTimeout, async ct =>
+        await RunAsync(GameState.Checking, Strings.Status_Checking, CheckTimeout, async ct =>
         {
             _available = await _updater.CheckAsync(ct);
             RemoteVersion = _available?.Version ?? Installed?.Version;
             if (_available is null)
             {
-                SetState(GameState.Ready, $"已是最新版本 {Installed?.Version}");
+                SetState(GameState.Ready, string.Format(Strings.Status_UpToDate, Installed?.Version));
                 return;
             }
             var resumable = await _updater.GetResumableBytesAsync(_available, ct);
             var download = _available.DownloadBytes;
             var size = resumable > 0
-                ? $"已下载 {FormatSize(resumable)}，可继续"
+                ? string.Format(Strings.Size_Resumable, FormatSize(resumable))
                 : Installed is not null && download < _available.InstalledSizeBytes
-                    ? $"需下载 {FormatSize(download)}，完整大小 {FormatSize(_available.InstalledSizeBytes)}"
+                    ? string.Format(Strings.Size_Delta, FormatSize(download), FormatSize(_available.InstalledSizeBytes))
                     : FormatSize(download);
             SetState(GameState.UpdateAvailable, Installed is null
-                ? $"可安装 {_available.Version}（{size}）"
-                : $"{SelectedChannel.Label}最新为 {_available.Version}（{size}）");
+                ? string.Format(Strings.Status_CanInstall, _available.Version, size)
+                : string.Format(Strings.Status_ChannelLatest, SelectedChannel.Label, _available.Version, size));
         });
     }
 
@@ -225,7 +225,7 @@ public sealed partial class GameViewModel : ObservableObject
 
     private async Task UpdateAsync(GameRelease release)
     {
-        await RunAsync(GameState.Downloading, $"正在下载 {release.Version}…", null, async ct =>
+        await RunAsync(GameState.Downloading, string.Format(Strings.Status_Downloading, release.Version), null, async ct =>
         {
             var meter = new SpeedMeter();
             var stage = DownloadStage.Downloading;
@@ -236,8 +236,8 @@ public sealed partial class GameViewModel : ObservableObject
                     stage = p.Stage;
                     meter = new SpeedMeter();
                     StatusText = stage == DownloadStage.ReusingLocalFiles
-                        ? "正在复用本地未变化的文件…"
-                        : $"正在下载 {release.Version}…";
+                        ? Strings.Status_Reusing
+                        : string.Format(Strings.Status_Downloading, release.Version);
                 }
                 ProgressValue = p.TotalBytes == 0 ? 0 : 100.0 * p.CompletedBytes / p.TotalBytes;
                 ProgressText = stage == DownloadStage.ReusingLocalFiles
@@ -246,14 +246,14 @@ public sealed partial class GameViewModel : ObservableObject
             });
             await _updater.DownloadAsync(release, progress, ct);
 
-            SetState(GameState.Installing, $"正在安装 {release.Version}…");
+            SetState(GameState.Installing, string.Format(Strings.Status_Installing, release.Version));
             IsProgressIndeterminate = true;
             ProgressText = "";
             await _updater.InstallAsync(release, ct);
 
             _available = null;
             await RefreshInstalledAsync();
-            SetState(GameState.Ready, $"{release.Version} 安装完成");
+            SetState(GameState.Ready, string.Format(Strings.Status_Installed, release.Version));
         });
     }
 
@@ -264,13 +264,13 @@ public sealed partial class GameViewModel : ObservableObject
         {
             if (await _context.Platform.IsGameRunningAsync(game.VersionDirectory, game.Entrypoint, CancellationToken.None))
             {
-                StatusText = $"{DisplayName} 已在运行";
+                StatusText = string.Format(Strings.Status_AlreadyRunning, DisplayName);
                 return;
             }
             var ticket = _updater.Health.Prepare(game);
             _logger.LogInformation("Launching {Version} from {Dir}", game.Version, game.VersionDirectory);
             await _context.Platform.LaunchGameAsync(game.VersionDirectory, game.Entrypoint, ticket.Environment, CancellationToken.None);
-            SetState(GameState.Running, $"正在启动 {game.Version}…");
+            SetState(GameState.Running, string.Format(Strings.Status_Launching, game.Version));
 
             var outcome = await _updater.Health.WaitAsync(ticket, _entry.HealthCheck,
                 ct => _context.Platform.IsGameRunningAsync(game.VersionDirectory, game.Entrypoint, ct),
@@ -281,23 +281,23 @@ public sealed partial class GameViewModel : ObservableObject
             switch (outcome)
             {
                 case LaunchOutcome.Healthy:
-                    SetState(GameState.Ready, $"已启动 {game.Version}");
+                    SetState(GameState.Ready, string.Format(Strings.Status_Launched, game.Version));
                     break;
                 case LaunchOutcome.Exited:
                     SetState(GameState.Failed, CanRollback
-                        ? $"{game.Version} 未能正常启动。可以点击“恢复上一版本”回到可用的旧版。"
-                        : $"{game.Version} 未能正常启动，请查看日志或重新安装。");
+                        ? string.Format(Strings.Status_LaunchFailedRollback, game.Version)
+                        : string.Format(Strings.Status_LaunchFailed, game.Version));
                     break;
                 case LaunchOutcome.TimedOut:
-                    SetState(GameState.Ready, $"{game.Version} 已启动，但未在 {HealthTimeout.TotalMinutes:0} 分钟内报告就绪。" +
-                        (CanRollback ? "如果游戏异常，可恢复上一版本。" : ""));
+                    SetState(GameState.Ready, string.Format(Strings.Status_LaunchTimedOut, game.Version, HealthTimeout.TotalMinutes.ToString("0")) +
+                        (CanRollback ? Strings.Status_LaunchTimedOutRollback : ""));
                     break;
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Launch failed");
-            SetState(GameState.Failed, $"启动失败：{ex.Message}");
+            SetState(GameState.Failed, string.Format(Strings.Status_LaunchError, ex.Message));
         }
     }
 
@@ -311,11 +311,11 @@ public sealed partial class GameViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanRollbackNow))]
     private async Task RollbackAsync()
     {
-        await RunAsync(GameState.Installing, "正在恢复上一版本…", null, async ct =>
+        await RunAsync(GameState.Installing, Strings.Status_RollingBack, null, async ct =>
         {
             await _updater.RollbackAsync(ct);
             await RefreshInstalledAsync();
-            SetState(GameState.Ready, $"已恢复到 {Installed?.Version}");
+            SetState(GameState.Ready, string.Format(Strings.Status_RolledBack, Installed?.Version));
         });
     }
 
@@ -354,19 +354,19 @@ public sealed partial class GameViewModel : ObservableObject
             var timedOut = !_userCancelled && timeout is not null;
             _logger.LogWarning("{Step} cancelled", busyState);
             SetState(_available is not null ? GameState.UpdateAvailable : Installed is null ? GameState.Failed : GameState.Ready,
-                (timedOut ? "连接超时，可稍后重试" : _available is not null ? "已暂停，再次点击可继续下载" : "已取消") + OfflineHint());
+                (timedOut ? Strings.Status_TimedOut : _available is not null ? Strings.Status_Paused : Strings.Status_Cancelled) + OfflineHint());
         }
         catch (UpdateException ex)
         {
             _logger.LogError(ex, "{Step} failed with {Code}", busyState, ex.Code);
             SetState(GameState.Failed, (ex.Code == UpdateErrorCode.ManifestNotFound
-                ? $"{SelectedChannel.Label}暂时没有发布版本，可以换个更新频道试试"
+                ? string.Format(Strings.Status_ChannelEmpty, SelectedChannel.Label)
                 : Describe(ex)) + OfflineHint());
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "{Step} failed unexpectedly", busyState);
-            SetState(GameState.Failed, $"出错了：{ex.Message}" + OfflineHint());
+            SetState(GameState.Failed, string.Format(Strings.Status_Error, ex.Message) + OfflineHint());
         }
         finally
         {
@@ -375,7 +375,7 @@ public sealed partial class GameViewModel : ObservableObject
         }
     }
 
-    private string OfflineHint() => Installed is null ? "" : $"\n仍可启动已安装的 {Installed.Version}。";
+    private string OfflineHint() => Installed is null ? "" : "\n" + string.Format(Strings.Status_OfflineHint, Installed.Version);
 
     private void SetState(GameState next, string message)
     {
@@ -383,24 +383,24 @@ public sealed partial class GameViewModel : ObservableObject
         StatusText = message;
     }
 
-    private static string Describe(UpdateException ex) => ex.Code switch
+    private static string Describe(UpdateException ex) => string.Format(Strings.Error_Detail, ex.Code switch
     {
-        UpdateErrorCode.Network => "无法连接更新服务器",
-        UpdateErrorCode.Timeout => "网络超时，已下载的部分会保留，可继续下载",
-        UpdateErrorCode.RateLimited => "更新服务器繁忙，请稍后重试",
-        UpdateErrorCode.PackageNotFound => "服务器上缺少该版本的文件",
-        UpdateErrorCode.SignatureInvalid => "更新清单签名无效，已拒绝",
-        UpdateErrorCode.ManifestNotFound => "服务器上暂无该游戏的发布版本",
-        UpdateErrorCode.ManifestInvalid => "更新清单无效",
-        UpdateErrorCode.LauncherTooOld => "需要先更新 RhythmHub",
-        UpdateErrorCode.InsufficientDiskSpace => "磁盘空间不足",
-        UpdateErrorCode.DownloadIncomplete => "下载不完整，请重试",
-        UpdateErrorCode.HashMismatch => "文件校验失败，请重试",
-        UpdateErrorCode.UnsafeArchive or UpdateErrorCode.InvalidPackage => "安装包无效",
-        UpdateErrorCode.GameRunning => "请先关闭游戏再更新",
-        UpdateErrorCode.NoRollbackTarget => "没有可恢复的上一版本",
-        _ => "更新失败",
-    } + $"（{ex.Message}）";
+        UpdateErrorCode.Network => Strings.Error_Network,
+        UpdateErrorCode.Timeout => Strings.Error_Timeout,
+        UpdateErrorCode.RateLimited => Strings.Error_RateLimited,
+        UpdateErrorCode.PackageNotFound => Strings.Error_PackageNotFound,
+        UpdateErrorCode.SignatureInvalid => Strings.Error_SignatureInvalid,
+        UpdateErrorCode.ManifestNotFound => Strings.Error_ManifestNotFound,
+        UpdateErrorCode.ManifestInvalid => Strings.Error_ManifestInvalid,
+        UpdateErrorCode.LauncherTooOld => Strings.Error_LauncherTooOld,
+        UpdateErrorCode.InsufficientDiskSpace => Strings.Error_InsufficientDiskSpace,
+        UpdateErrorCode.DownloadIncomplete => Strings.Error_DownloadIncomplete,
+        UpdateErrorCode.HashMismatch => Strings.Error_HashMismatch,
+        UpdateErrorCode.UnsafeArchive or UpdateErrorCode.InvalidPackage => Strings.Error_InvalidPackage,
+        UpdateErrorCode.GameRunning => Strings.Error_GameRunning,
+        UpdateErrorCode.NoRollbackTarget => Strings.Error_NoRollbackTarget,
+        _ => Strings.Error_UpdateFailed,
+    }, ex.Message);
 
     private Bitmap? LoadIcon(string? path)
     {

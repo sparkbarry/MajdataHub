@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text.Json;
+using RhythmHub.Launcher.Resources;
 
 namespace RhythmHub.Launcher.Services;
 
@@ -8,11 +10,34 @@ public sealed record ChannelOption(string Id, string Label, string ShortLabel)
 {
     public static readonly IReadOnlyList<ChannelOption> All =
     [
-        new("stable", "稳定版", "稳定版"),
-        new("nightly", "每日构建（Nightly）", "每日构建"),
+        new("stable", Strings.Channel_Stable, Strings.Channel_Stable),
+        new("nightly", Strings.Channel_Nightly, Strings.Channel_NightlyShort),
     ];
 
     public static ChannelOption Find(string id) => All.FirstOrDefault(c => c.Id == id) ?? All[0];
+}
+
+/// <summary>A UI language the player can pick; an empty id follows the system.</summary>
+public sealed record LanguageOption(string Id, string Label)
+{
+    public static readonly IReadOnlyList<LanguageOption> All =
+    [
+        new("", Strings.Language_System),
+        new("zh", "中文"),
+        new("en", "English"),
+        new("ja", "日本語"),
+    ];
+
+    public static LanguageOption Find(string? id) => All.FirstOrDefault(l => l.Id == id) ?? All[0];
+
+    /// <summary>Switches resource lookups to <paramref name="id"/>; must run before any window is built.</summary>
+    public static void Apply(string? id)
+    {
+        if (string.IsNullOrEmpty(id) || Find(id).Id != id) return;
+        var culture = CultureInfo.GetCultureInfo(id);
+        CultureInfo.DefaultThreadCurrentUICulture = culture;
+        CultureInfo.CurrentUICulture = culture;
+    }
 }
 
 /// <summary>Per-user launcher preferences in {installRoot}/settings.json; survives launcher updates.</summary>
@@ -56,17 +81,37 @@ public sealed class LauncherSettings
     public void SetChannel(string gameId, string channel)
     {
         lock (_lock)
+            Save(_data with { Channels = new Dictionary<string, string>(_data.Channels) { [gameId] = channel } });
+    }
+
+    /// <summary>The picked UI language ("zh", "en", "ja"), or null to follow the system.</summary>
+    public string? Language
+    {
+        get
         {
-            _data = _data with { Channels = new Dictionary<string, string>(_data.Channels) { [gameId] = channel } };
-            Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            var temp = _path + ".tmp";
-            File.WriteAllText(temp, JsonSerializer.Serialize(_data, Json));
-            File.Move(temp, _path, overwrite: true);
+            lock (_lock)
+                return _data.Language;
         }
+    }
+
+    public void SetLanguage(string? language)
+    {
+        lock (_lock)
+            Save(_data with { Language = string.IsNullOrEmpty(language) ? null : language });
+    }
+
+    private void Save(Data data)
+    {
+        _data = data;
+        Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
+        var temp = _path + ".tmp";
+        File.WriteAllText(temp, JsonSerializer.Serialize(_data, Json));
+        File.Move(temp, _path, overwrite: true);
     }
 
     private sealed record Data
     {
         public Dictionary<string, string> Channels { get; init; } = [];
+        public string? Language { get; init; }
     }
 }

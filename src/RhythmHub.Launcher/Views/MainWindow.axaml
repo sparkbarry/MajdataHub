@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:RhythmHub.Launcher.ViewModels"
         xmlns:services="using:RhythmHub.Launcher.Services"
+        xmlns:res="using:RhythmHub.Launcher.Resources"
         x:Class="RhythmHub.Launcher.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="RhythmHub"
@@ -18,22 +19,38 @@
       <DockPanel Margin="12,0,12,16">
         <!-- Room for the macOS traffic lights when the content extends into the title bar. -->
         <Panel x:Name="TitleBarSpacer" DockPanel.Dock="Top" Height="16" />
-        <TextBlock DockPanel.Dock="Top" Text="游戏" Classes="secondary" FontSize="11" FontWeight="SemiBold"
+        <TextBlock DockPanel.Dock="Top" Text="{x:Static res:Strings.Sidebar_Games}" Classes="secondary" FontSize="11" FontWeight="SemiBold"
                    Margin="10,0,10,6" />
 
         <DockPanel DockPanel.Dock="Bottom" Margin="10,10,10,0">
-          <Button DockPanel.Dock="Right" Classes="link" Content="日志" FontSize="12"
+          <Button DockPanel.Dock="Right" Classes="link" Content="{x:Static res:Strings.Logs}" FontSize="12"
                   Command="{Binding OpenLogsCommand}" />
           <TextBlock Text="{Binding LauncherVersionText}" Classes="secondary" FontSize="12" VerticalAlignment="Center" />
         </DockPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Margin="10,10,10,0" Spacing="4">
+          <DockPanel>
+            <TextBlock Text="{x:Static res:Strings.Language}" Classes="secondary" FontSize="12" VerticalAlignment="Center" />
+            <ComboBox HorizontalAlignment="Right" FontSize="12" MinHeight="28" Padding="10,2"
+                      ItemsSource="{Binding Languages}" SelectedItem="{Binding SelectedLanguage}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="services:LanguageOption">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </DockPanel>
+          <TextBlock Text="{x:Static res:Strings.Language_RestartHint}" Classes="secondary" FontSize="11"
+                     TextWrapping="Wrap" IsVisible="{Binding LanguageChanged}" />
+        </StackPanel>
 
         <Border DockPanel.Dock="Bottom" IsVisible="{Binding HasLauncherUpdate}"
                 Background="{DynamicResource FloatingCardBrush}" CornerRadius="12" Padding="12"
                 BoxShadow="0 1 2 0 #10000000">
           <StackPanel Spacing="6">
-            <TextBlock FontWeight="SemiBold" Text="{Binding LauncherUpdateVersion, StringFormat='启动器有新版本 {0}'}" />
+            <TextBlock FontWeight="SemiBold" Text="{Binding LauncherUpdateVersion, StringFormat={x:Static res:Strings.Launcher_UpdateAvailable}}" />
             <TextBlock Text="{Binding LauncherUpdateText}" Classes="secondary" FontSize="12" TextWrapping="Wrap" />
-            <Button Classes="pill primary small" Content="重启更新" Margin="0,2,0,0"
+            <Button Classes="pill primary small" Content="{x:Static res:Strings.Launcher_RestartToUpdate}" Margin="0,2,0,0"
                     Command="{Binding RestartToUpdateCommand}" />
           </StackPanel>
         </Border>
@@ -90,9 +107,9 @@
                   <WrapPanel Margin="0,14,0,0" ItemSpacing="12" LineSpacing="12">
                     <Button Classes="pill primary" Content="{Binding PrimaryText}" MinWidth="140"
                             Command="{Binding PrimaryCommand}" />
-                    <Button Classes="pill" Content="取消" IsVisible="{Binding IsBusy}"
+                    <Button Classes="pill" Content="{x:Static res:Strings.Action_Cancel}" IsVisible="{Binding IsBusy}"
                             Command="{Binding CancelCommand}" />
-                    <Button Classes="pill" Content="检查更新" IsVisible="{Binding ShowCheckButton}"
+                    <Button Classes="pill" Content="{x:Static res:Strings.Action_CheckForUpdates}" IsVisible="{Binding ShowCheckButton}"
                             Command="{Binding CheckCommand}" />
                   </WrapPanel>
                 </StackPanel>
@@ -123,7 +140,7 @@
               <Border Background="{DynamicResource CardBrush}" CornerRadius="14" ClipToBounds="True">
                 <StackPanel>
                   <Grid Classes="row" ColumnDefinitions="*,Auto">
-                    <TextBlock Text="更新频道" FontWeight="Medium" VerticalAlignment="Center" />
+                    <TextBlock Text="{x:Static res:Strings.Label_Channel}" FontWeight="Medium" VerticalAlignment="Center" />
                     <ListBox Grid.Column="1" Classes="segmented" Margin="0,8"
                              ItemsSource="{Binding Channels}" SelectedItem="{Binding SelectedChannel}"
                              IsEnabled="{Binding CanChangeChannel}">
@@ -142,7 +159,7 @@
 
                   <Border Classes="separator" />
                   <Grid Classes="row" ColumnDefinitions="*,Auto">
-                    <TextBlock Text="已安装版本" FontWeight="Medium" VerticalAlignment="Center" />
+                    <TextBlock Text="{x:Static res:Strings.Label_InstalledVersion}" FontWeight="Medium" VerticalAlignment="Center" />
                     <TextBlock Grid.Column="1" Text="{Binding InstalledVersionShort}" Classes="secondary"
                                VerticalAlignment="Center" />
                   </Grid>
@@ -150,7 +167,7 @@
                   <StackPanel IsVisible="{Binding RemoteVersion, Converter={x:Static ObjectConverters.IsNotNull}}">
                     <Border Classes="separator" />
                     <Grid Classes="row" ColumnDefinitions="*,Auto">
-                      <TextBlock Text="最新版本" FontWeight="Medium" VerticalAlignment="Center" />
+                      <TextBlock Text="{x:Static res:Strings.Label_LatestVersion}" FontWeight="Medium" VerticalAlignment="Center" />
                       <TextBlock Grid.Column="1" Text="{Binding RemoteVersion}" Classes="secondary"
                                  VerticalAlignment="Center" />
                     </Grid>
@@ -159,10 +176,10 @@
                   <StackPanel IsVisible="{Binding CanRollback}">
                     <Border Classes="separator" />
                     <Grid Classes="row" ColumnDefinitions="*,Auto,Auto">
-                      <TextBlock Text="上一版本" FontWeight="Medium" VerticalAlignment="Center" />
+                      <TextBlock Text="{x:Static res:Strings.Label_PreviousVersion}" FontWeight="Medium" VerticalAlignment="Center" />
                       <TextBlock Grid.Column="1" Text="{Binding PreviousVersion}" Classes="secondary"
                                  VerticalAlignment="Center" />
-                      <Button Grid.Column="2" Classes="link" Content="恢复" Margin="14,0,0,0"
+                      <Button Grid.Column="2" Classes="link" Content="{x:Static res:Strings.Action_Restore}" Margin="14,0,0,0"
                               VerticalAlignment="Center" Command="{Binding RollbackCommand}" />
                     </Grid>
                   </StackPanel>
@@ -170,7 +187,7 @@
                   <StackPanel IsVisible="{Binding HasInstall}">
                     <Border Classes="separator" />
                     <Grid Classes="row" ColumnDefinitions="Auto,*,Auto">
-                      <TextBlock Text="安装位置" FontWeight="Medium" VerticalAlignment="Center" />
+                      <TextBlock Text="{x:Static res:Strings.Label_Location}" FontWeight="Medium" VerticalAlignment="Center" />
                       <TextBlock Grid.Column="1" Text="{Binding GameFolderText}" Classes="secondary"
                                  TextTrimming="PathSegmentEllipsis" HorizontalAlignment="Right"
                                  VerticalAlignment="Center" Margin="16,0,0,0" />

@@ -16,6 +16,7 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var context = LauncherContext.Create();
+            LanguageOption.Apply(context.Settings.Language);
             if (context.InstanceLock is null)
             {
                 context.Dispose();

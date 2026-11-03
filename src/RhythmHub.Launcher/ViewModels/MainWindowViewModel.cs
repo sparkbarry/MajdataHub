@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
+using RhythmHub.Launcher.Resources;
 using RhythmHub.Launcher.Services;
 
 namespace RhythmHub.Launcher.ViewModels;
@@ -16,6 +17,34 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Games = new ObservableCollection<GameViewModel>(
             context.Config.Games.Select(g => new GameViewModel(g, context)));
         selectedGame = Games.FirstOrDefault();
+        _startupLanguage = LanguageOption.Find(context.Settings.Language);
+        selectedLanguage = _startupLanguage;
+    }
+
+    private readonly LanguageOption _startupLanguage;
+
+    public IReadOnlyList<LanguageOption> Languages => LanguageOption.All;
+
+    [ObservableProperty]
+    private LanguageOption selectedLanguage;
+
+    /// <summary>Strings are loaded once at startup, so a new language shows after a restart.</summary>
+    [ObservableProperty]
+    private bool languageChanged;
+
+    partial void OnSelectedLanguageChanged(LanguageOption value)
+    {
+        // The combo box can briefly clear and restore its selection while binding; only a real change counts.
+        if (value is null || value.Id == (_context.Settings.Language ?? "")) return;
+        try
+        {
+            _context.Settings.SetLanguage(value.Id);
+            LanguageChanged = value != _startupLanguage;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _context.Loggers.CreateLogger("Settings").LogWarning(ex, "Could not save the language choice");
+        }
     }
 
     public ObservableCollection<GameViewModel> Games { get; }
@@ -35,7 +64,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     private string launcherUpdateText = "";
 
-    partial void OnLauncherUpdateVersionChanged(string? value) => LauncherUpdateText = "已下载，重启后生效";
+    partial void OnLauncherUpdateVersionChanged(string? value) => LauncherUpdateText = Strings.Launcher_UpdateReady;
 
     public async Task InitializeAsync()
     {
@@ -63,7 +92,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         // Restarting would abort a download or install in progress; the game itself keeps running.
         if (Games.Any(g => g.IsBusy))
         {
-            LauncherUpdateText = "请等游戏下载或安装完成后再重启更新";
+            LauncherUpdateText = Strings.Launcher_WaitForGames;
             return;
         }
         _context.SelfUpdate.ApplyAndRestart();

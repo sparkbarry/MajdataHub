@@ -32,7 +32,7 @@ tools/fake-game/main.c           native stand-in player for pipeline tests
 .github/actions/upload-build/    composite action the game repositories call
 .github/workflows/               publish-game.yml (manual publish / rollback), test-pipeline.yml (regression)
 infra/aws/                       CloudFormation for the GitHub OIDC role
-site/                            static intro page (Chinese, Apple-style); not hosted yet
+site/                            static intro page: index.html (zh), en/, ja/ share style.css and main.js; on Vercel
 ```
 
 ## Commands
@@ -69,5 +69,7 @@ For local end-to-end runs see the README ("本地模拟 S3"); the launcher honou
 ## Conventions
 
 - Code comments, identifiers and commit messages in English (Conventional Commits: `feat:`, `fix:`, `ci:`, `docs:`, `chore:`).
-- User-facing launcher strings and the docs are in Chinese.
+- Launcher UI strings live in src/RhythmHub.Launcher/Resources/Strings.resx (English, neutral) with Strings.zh.resx and
+  Strings.ja.resx; add every new string to all three. Game descriptions are translated in games.json. The docs are in Chinese.
+- site/ keeps one hand-written page per language; change all three together. Screenshots per language are in site/images/{zh,en,ja}/.
 - Match the surrounding code: small sealed classes, records for data, `UpdateException` with an `UpdateErrorCode` for expected failures.

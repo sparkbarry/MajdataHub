@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="Sidebar_Games" xml:space="preserve"><value>Games</value></data>
+  <data name="Logs" xml:space="preserve"><value>Logs</value></data>
+  <data name="Language" xml:space="preserve"><value>Language</value></data>
+  <data name="Language_System" xml:space="preserve"><value>System</value></data>
+  <data name="Language_RestartHint" xml:space="preserve"><value>Restart RhythmHub to apply</value></data>
+  <data name="Launcher_UpdateAvailable" xml:space="preserve"><value>RhythmHub {0} available</value></data>
+  <data name="Launcher_UpdateReady" xml:space="preserve"><value>Downloaded. Applies after a restart.</value></data>
+  <data name="Launcher_RestartToUpdate" xml:space="preserve"><value>Restart to Update</value></data>
+  <data name="Launcher_WaitForGames" xml:space="preserve"><value>Wait for game downloads and installs to finish first</value></data>
+  <data name="AlreadyRunning" xml:space="preserve"><value>RhythmHub is already running.</value></data>
+  <data name="OK" xml:space="preserve"><value>OK</value></data>
+  <data name="Channel_Stable" xml:space="preserve"><value>Stable</value></data>
+  <data name="Channel_Nightly" xml:space="preserve"><value>Nightly</value></data>
+  <data name="Channel_NightlyShort" xml:space="preserve"><value>Nightly</value></data>
+  <data name="Label_Channel" xml:space="preserve"><value>Update Channel</value></data>
+  <data name="Label_InstalledVersion" xml:space="preserve"><value>Installed Version</value></data>
+  <data name="Label_LatestVersion" xml:space="preserve"><value>Latest Version</value></data>
+  <data name="Label_PreviousVersion" xml:space="preserve"><value>Previous Version</value></data>
+  <data name="Label_Location" xml:space="preserve"><value>Location</value></data>
+  <data name="RevealInFinder" xml:space="preserve"><value>Show in Finder</value></data>
+  <data name="RevealInExplorer" xml:space="preserve"><value>Show in Explorer</value></data>
+  <data name="NotInstalled" xml:space="preserve"><value>Not installed</value></data>
+  <data name="Sidebar_Downloading" xml:space="preserve"><value>Downloading · {0}%</value></data>
+  <data name="Sidebar_Installing" xml:space="preserve"><value>Installing…</value></data>
+  <data name="Sidebar_Running" xml:space="preserve"><value>Running</value></data>
+  <data name="Action_Play" xml:space="preserve"><value>Play</value></data>
+  <data name="Action_Install" xml:space="preserve"><value>Install</value></data>
+  <data name="Action_Update" xml:space="preserve"><value>Update</value></data>
+  <data name="Action_Checking" xml:space="preserve"><value>Checking…</value></data>
+  <data name="Action_Updating" xml:space="preserve"><value>Updating…</value></data>
+  <data name="Action_Running" xml:space="preserve"><value>Running</value></data>
+  <data name="Action_Retry" xml:space="preserve"><value>Retry</value></data>
+  <data name="Action_CheckForUpdates" xml:space="preserve"><value>Check for Updates</value></data>
+  <data name="Action_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Action_Restore" xml:space="preserve"><value>Restore</value></data>
+  <data name="Status_Checking" xml:space="preserve"><value>Checking for updates…</value></data>
+  <data name="Status_UpToDate" xml:space="preserve"><value>Up to date: {0}</value></data>
+  <data name="Size_Resumable" xml:space="preserve"><value>{0} already downloaded, can resume</value></data>
+  <data name="Size_Delta" xml:space="preserve"><value>{0} to download, {1} in total</value></data>
+  <data name="Status_CanInstall" xml:space="preserve"><value>{0} is available ({1})</value></data>
+  <data name="Status_ChannelLatest" xml:space="preserve"><value>Latest {0}: {1} ({2})</value></data>
+  <data name="Status_Downloading" xml:space="preserve"><value>Downloading {0}…</value></data>
+  <data name="Status_Reusing" xml:space="preserve"><value>Reusing unchanged local files…</value></data>
+  <data name="Status_Installing" xml:space="preserve"><value>Installing {0}…</value></data>
+  <data name="Status_Installed" xml:space="preserve"><value>{0} installed</value></data>
+  <data name="Status_AlreadyRunning" xml:space="preserve"><value>{0} is already running</value></data>
+  <data name="Status_Launching" xml:space="preserve"><value>Starting {0}…</value></data>
+  <data name="Status_Launched" xml:space="preserve"><value>Started {0}</value></data>
+  <data name="Status_LaunchFailedRollback" xml:space="preserve"><value>{0} didn’t start properly. Use Restore under Previous Version to go back.</value></data>
+  <data name="Status_LaunchFailed" xml:space="preserve"><value>{0} didn’t start properly. Check the logs or reinstall.</value></data>
+  <data name="Status_LaunchTimedOut" xml:space="preserve"><value>{0} started but didn’t report ready within {1} minutes.</value></data>
+  <data name="Status_LaunchTimedOutRollback" xml:space="preserve"><value> If the game misbehaves, restore the previous version.</value></data>
+  <data name="Status_LaunchError" xml:space="preserve"><value>Couldn’t start: {0}</value></data>
+  <data name="Status_RollingBack" xml:space="preserve"><value>Restoring the previous version…</value></data>
+  <data name="Status_RolledBack" xml:space="preserve"><value>Restored {0}</value></data>
+  <data name="Status_TimedOut" xml:space="preserve"><value>Connection timed out. Try again later.</value></data>
+  <data name="Status_Paused" xml:space="preserve"><value>Paused. Click again to resume.</value></data>
+  <data name="Status_Cancelled" xml:space="preserve"><value>Cancelled</value></data>
+  <data name="Status_ChannelEmpty" xml:space="preserve"><value>Nothing has been released on {0} yet. Try another channel.</value></data>
+  <data name="Status_Error" xml:space="preserve"><value>Something went wrong: {0}</value></data>
+  <data name="Status_OfflineHint" xml:space="preserve"><value>You can still play the installed {0}.</value></data>
+  <data name="Error_Detail" xml:space="preserve"><value>{0} ({1})</value></data>
+  <data name="Error_Network" xml:space="preserve"><value>Can’t reach the update server</value></data>
+  <data name="Error_Timeout" xml:space="preserve"><value>The network timed out. What was downloaded is kept and can resume</value></data>
+  <data name="Error_RateLimited" xml:space="preserve"><value>The update server is busy. Try again later</value></data>
+  <data name="Error_PackageNotFound" xml:space="preserve"><value>The server is missing files for this version</value></data>
+  <data name="Error_SignatureInvalid" xml:space="preserve"><value>The update manifest’s signature is invalid; rejected</value></data>
+  <data name="Error_ManifestNotFound" xml:space="preserve"><value>This game has no release on the server yet</value></data>
+  <data name="Error_ManifestInvalid" xml:space="preserve"><value>The update manifest is invalid</value></data>
+  <data name="Error_LauncherTooOld" xml:space="preserve"><value>Update RhythmHub first</value></data>
+  <data name="Error_InsufficientDiskSpace" xml:space="preserve"><value>Not enough disk space</value></data>
+  <data name="Error_DownloadIncomplete" xml:space="preserve"><value>The download is incomplete. Try again</value></data>
+  <data name="Error_HashMismatch" xml:space="preserve"><value>File verification failed. Try again</value></data>
+  <data name="Error_InvalidPackage" xml:space="preserve"><value>The package is invalid</value></data>
+  <data name="Error_GameRunning" xml:space="preserve"><value>Quit the game before updating</value></data>
+  <data name="Error_NoRollbackTarget" xml:space="preserve"><value>There’s no previous version to restore</value></data>
+  <data name="Error_UpdateFailed" xml:space="preserve"><value>Update failed</value></data>
+</root>

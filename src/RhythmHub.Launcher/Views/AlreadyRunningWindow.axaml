@@ -1,11 +1,12 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:res="using:RhythmHub.Launcher.Resources"
         x:Class="RhythmHub.Launcher.Views.AlreadyRunningWindow"
         Title="RhythmHub"
         Width="360" Height="150" CanResize="False"
         WindowStartupLocation="CenterScreen">
   <StackPanel Margin="24" Spacing="16">
-    <TextBlock Text="RhythmHub 已经在运行。" FontSize="16" />
-    <Button Content="好的" HorizontalAlignment="Right" Click="OnClose" />
+    <TextBlock Text="{x:Static res:Strings.AlreadyRunning}" FontSize="16" TextWrapping="Wrap" />
+    <Button Content="{x:Static res:Strings.OK}" HorizontalAlignment="Right" Click="OnClose" />
   </StackPanel>
 </Window>

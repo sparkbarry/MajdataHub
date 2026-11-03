@@ -3,10 +3,16 @@
     <OutputType>WinExe</OutputType>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <NeutralLanguage>en</NeutralLanguage>
+    <SatelliteResourceLanguages>en;zh;ja</SatelliteResourceLanguages>
   </PropertyGroup>
   <ItemGroup>
     <None Update="games.json" CopyToOutputDirectory="PreserveNewest" />
     <AvaloniaResource Include="Assets\**" />
+    <!-- English is the neutral language; Strings.zh / Strings.ja are satellite assemblies. -->
+    <EmbeddedResource Update="Resources\Strings.resx" StronglyTypedLanguage="CSharp" StronglyTypedClassName="Strings"
+                      StronglyTypedNamespace="RhythmHub.Launcher.Resources" PublicClass="true"
+                      StronglyTypedFileName="$(IntermediateOutputPath)Strings.Designer.cs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" />

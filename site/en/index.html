@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RhythmHub</title>
+<meta name="description" content="A launcher that installs, updates and starts MajdataPlay and OurTaikoPlay on Windows and macOS.">
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="../style.css">
+<link rel="alternate" hreflang="zh" href="../">
+<link rel="alternate" hreflang="en" href="../en/">
+<link rel="alternate" hreflang="ja" href="../ja/">
+</head>
+<body>
+
+<nav aria-label="Main">
+  <div class="wrap">
+    <a class="brand" href="#">RhythmHub</a>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#games">Games</a>
+      <a href="#download">Download</a>
+      <a href="https://github.com/sparkbarry/RhythmHub">GitHub</a>
+      <span class="langs"><a href="../" hreflang="zh" lang="zh">中文</a> <a href="../en/" hreflang="en" lang="en" aria-current="true">English</a> <a href="../ja/" hreflang="ja" lang="ja">日本語</a></span>
+      <a class="pill small" href="#download">Download</a>
+    </div>
+  </div>
+</nav>
+
+<main>
+  <header class="hero">
+    <div class="wrap">
+      <h1>RhythmHub</h1>
+      <p class="lead">Install, update and play MajdataPlay and OurTaikoPlay.</p>
+      <div class="actions">
+        <a class="pill" id="hero-download" href="#download" data-mac="Download for macOS" data-win="Download for Windows">Download</a>
+      </div>
+      <p class="note">Windows x64 · macOS on Apple silicon</p>
+    </div>
+    <div class="wrap">
+      <picture class="shot">
+        <source srcset="../images/en/app-dark.png" media="(prefers-color-scheme: dark)">
+        <img src="../images/en/app-light.png" width="1800" height="1236"
+             alt="The RhythmHub window: the game list on the left; on the right, OurTaikoPlay’s icon, the Play button, the update channel and version details">
+      </picture>
+    </div>
+  </header>
+
+  <section class="band alt" id="features">
+    <div class="wrap">
+      <h2>Features</h2>
+      <div class="grid">
+        <div class="tile">
+          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4v17M9 14l7 7 7-7M6 27h20"/></svg>
+          <h3>Incremental updates</h3>
+          <p>Downloads only the files that changed and reuses the rest.</p>
+        </div>
+        <div class="tile">
+          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h16v20H8z"/><path d="M12 16h8M16 12v8"/><path d="M4 16h4M24 16h4"/></svg>
+          <h3>Resumable downloads</h3>
+          <p>Pause any time; an interrupted download picks up where it stopped.</p>
+        </div>
+        <div class="tile">
+          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4l10 4v7c0 6.5-4.3 11.2-10 13-5.7-1.8-10-6.5-10-13V8z"/><path d="M11.5 16l3.2 3.2 6-6.4"/></svg>
+          <h3>Signed releases</h3>
+          <p>Every release manifest is signed, and each file’s hash is checked before install.</p>
+        </div>
+        <div class="tile">
+          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 11h13a6 6 0 010 12H12"/><path d="M12 6l-5 5 5 5"/></svg>
+          <h3>Rollback</h3>
+          <p>If a new version misbehaves, restore the previous one without downloading it again.</p>
+        </div>
+        <div class="tile">
+          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10" width="24" height="12" rx="6"/><rect x="16" y="12" width="10" height="8" rx="4" fill="currentColor" stroke="none"/></svg>
+          <h3>Update channels</h3>
+          <p>Choose Stable or Nightly for each game.</p>
+        </div>
+        <div class="tile">
+          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M26 16a10 10 0 11-3-7.1"/><path d="M26 5v6h-6"/></svg>
+          <h3>Self-updating</h3>
+          <p>The launcher downloads its own updates in the background and applies them on restart.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="games">
+    <div class="wrap">
+      <h2>Games</h2>
+      <div class="games">
+        <div class="game">
+          <img src="../images/majdataplay.png" width="256" height="256" alt="MajdataPlay icon">
+          <div>
+            <h3>MajdataPlay</h3>
+            <p>A maimai-style arcade rhythm game simulator.</p>
+            <div class="tags"><span class="tag">Windows</span><span class="tag">macOS</span><span class="tag">Nightly</span></div>
+          </div>
+        </div>
+        <div class="game">
+          <img src="../images/ourtaikoplay.png" width="256" height="256" alt="OurTaikoPlay icon">
+          <div>
+            <h3>OurTaikoPlay</h3>
+            <p>A taiko-style rhythm game.</p>
+            <div class="tags"><span class="tag">Windows</span><span class="tag">macOS</span><span class="tag">Stable</span><span class="tag">Nightly</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="duo">
+        <figure>
+          <img src="../images/en/app-install.png" width="1800" height="1236" loading="lazy"
+               alt="RhythmHub in light mode: MajdataPlay is not installed yet, with an Install button and a 587.3 MB download size">
+          <figcaption>See the download size before you install</figcaption>
+        </figure>
+        <figure>
+          <img src="../images/en/app-dark.png" width="1800" height="1236" loading="lazy"
+               alt="RhythmHub in dark mode: a new OurTaikoPlay nightly needs an 87.1 MB download, 279.9 MB in total">
+          <figcaption>Dark mode</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="band alt" id="download">
+    <div class="wrap">
+      <h2>Download</h2>
+      <p class="sub">Updates itself once installed.</p>
+
+      <div class="platforms">
+        <div class="platform" id="dl-mac">
+          <div class="os">
+            <svg viewBox="0 0 30 30" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="24" height="16" rx="2"/><path d="M10 26h10M15 21v5"/></svg>
+            <h3>macOS</h3>
+            <span class="badge">Your system</span>
+          </div>
+          <p class="req">Apple silicon (M series)</p>
+          <a class="pill" href="https://distrib.sparkbarry.com/RhythmHub/MacOS/RhythmHub-osx-Setup.pkg">Download installer (.pkg)</a>
+          <ul>
+            <li>Portable <a href="https://distrib.sparkbarry.com/RhythmHub/MacOS/RhythmHub-osx-Portable.zip">.zip</a></li>
+            <li>Size <span>about 48 MB</span></li>
+          </ul>
+        </div>
+        <div class="platform" id="dl-win">
+          <div class="os">
+            <svg viewBox="0 0 30 30" fill="currentColor" aria-hidden="true"><path d="M4 7l9-1.3V14H4zM14.5 5.5L26 4v10H14.5zM4 15.5h9v8.8L4 23zM14.5 15.5H26V26l-11.5-1.6z"/></svg>
+            <h3>Windows</h3>
+            <span class="badge">Your system</span>
+          </div>
+          <p class="req">64-bit (x64)</p>
+          <a class="pill" href="https://distrib.sparkbarry.com/RhythmHub/Windows/RhythmHub-win-Setup.exe">Download installer (.exe)</a>
+          <ul>
+            <li>Portable <a href="https://distrib.sparkbarry.com/RhythmHub/Windows/RhythmHub-win-Portable.zip">.zip</a></li>
+            <li>Size <span>about 59 MB</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="sources">
+        <div class="source">
+          <h4>CDN</h4>
+          <p>Where the buttons above download from. Always the latest version:<br>
+            <code>https://distrib.sparkbarry.com/RhythmHub/MacOS/RhythmHub-osx-Setup.pkg</code><br>
+            <code>https://distrib.sparkbarry.com/RhythmHub/Windows/RhythmHub-win-Setup.exe</code></p>
+        </div>
+        <div class="source">
+          <h4>GitHub Releases</h4>
+          <p>Installers for every version, named with the version number, such as <code>RhythmHub_1.0.2_aarch64.pkg</code>.</p>
+          <p style="margin-top: 14px"><a class="pill ghost" href="https://github.com/sparkbarry/RhythmHub/releases/latest">All versions</a></p>
+        </div>
+      </div>
+
+      <div class="first-run">
+        <h4>First launch</h4>
+        <p>The installers aren’t signed yet, so the system blocks the first launch. You only need to allow it once per computer:</p>
+        <ul>
+          <li>macOS: open it once, then click “Open Anyway” in System Settings → Privacy &amp; Security.</li>
+          <li>Windows: in the SmartScreen prompt, click “More info → Run anyway”.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span class="langs" aria-label="Language"><a href="../" hreflang="zh" lang="zh">中文</a> <a href="../en/" hreflang="en" lang="en" aria-current="true">English</a> <a href="../ja/" hreflang="ja" lang="ja">日本語</a></span>
+    <span><a href="https://github.com/sparkbarry/RhythmHub">GitHub</a> · <a href="https://github.com/sparkbarry/RhythmHub/releases">Release history</a></span>
+  </div>
+</footer>
+
+<script src="../main.js"></script>
+</body>
+</html>

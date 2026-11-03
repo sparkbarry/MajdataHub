@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="Sidebar_Games" xml:space="preserve"><value>游戏</value></data>
+  <data name="Logs" xml:space="preserve"><value>日志</value></data>
+  <data name="Language" xml:space="preserve"><value>语言</value></data>
+  <data name="Language_System" xml:space="preserve"><value>跟随系统</value></data>
+  <data name="Language_RestartHint" xml:space="preserve"><value>重启 RhythmHub 后生效</value></data>
+  <data name="Launcher_UpdateAvailable" xml:space="preserve"><value>启动器有新版本 {0}</value></data>
+  <data name="Launcher_UpdateReady" xml:space="preserve"><value>已下载，重启后生效</value></data>
+  <data name="Launcher_RestartToUpdate" xml:space="preserve"><value>重启更新</value></data>
+  <data name="Launcher_WaitForGames" xml:space="preserve"><value>请等游戏下载或安装完成后再重启更新</value></data>
+  <data name="AlreadyRunning" xml:space="preserve"><value>RhythmHub 已经在运行。</value></data>
+  <data name="OK" xml:space="preserve"><value>好的</value></data>
+  <data name="Channel_Stable" xml:space="preserve"><value>稳定版</value></data>
+  <data name="Channel_Nightly" xml:space="preserve"><value>每日构建（Nightly）</value></data>
+  <data name="Channel_NightlyShort" xml:space="preserve"><value>每日构建</value></data>
+  <data name="Label_Channel" xml:space="preserve"><value>更新频道</value></data>
+  <data name="Label_InstalledVersion" xml:space="preserve"><value>已安装版本</value></data>
+  <data name="Label_LatestVersion" xml:space="preserve"><value>最新版本</value></data>
+  <data name="Label_PreviousVersion" xml:space="preserve"><value>上一版本</value></data>
+  <data name="Label_Location" xml:space="preserve"><value>安装位置</value></data>
+  <data name="RevealInFinder" xml:space="preserve"><value>在访达中显示</value></data>
+  <data name="RevealInExplorer" xml:space="preserve"><value>在资源管理器中显示</value></data>
+  <data name="NotInstalled" xml:space="preserve"><value>未安装</value></data>
+  <data name="Sidebar_Downloading" xml:space="preserve"><value>正在下载 · {0}%</value></data>
+  <data name="Sidebar_Installing" xml:space="preserve"><value>正在安装…</value></data>
+  <data name="Sidebar_Running" xml:space="preserve"><value>运行中</value></data>
+  <data name="Action_Play" xml:space="preserve"><value>开始游戏</value></data>
+  <data name="Action_Install" xml:space="preserve"><value>安装</value></data>
+  <data name="Action_Update" xml:space="preserve"><value>更新</value></data>
+  <data name="Action_Checking" xml:space="preserve"><value>检查中…</value></data>
+  <data name="Action_Updating" xml:space="preserve"><value>更新中…</value></data>
+  <data name="Action_Running" xml:space="preserve"><value>游戏运行中</value></data>
+  <data name="Action_Retry" xml:space="preserve"><value>重试</value></data>
+  <data name="Action_CheckForUpdates" xml:space="preserve"><value>检查更新</value></data>
+  <data name="Action_Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="Action_Restore" xml:space="preserve"><value>恢复</value></data>
+  <data name="Status_Checking" xml:space="preserve"><value>正在检查更新…</value></data>
+  <data name="Status_UpToDate" xml:space="preserve"><value>已是最新版本 {0}</value></data>
+  <data name="Size_Resumable" xml:space="preserve"><value>已下载 {0}，可继续</value></data>
+  <data name="Size_Delta" xml:space="preserve"><value>需下载 {0}，完整大小 {1}</value></data>
+  <data name="Status_CanInstall" xml:space="preserve"><value>可安装 {0}（{1}）</value></data>
+  <data name="Status_ChannelLatest" xml:space="preserve"><value>{0}最新为 {1}（{2}）</value></data>
+  <data name="Status_Downloading" xml:space="preserve"><value>正在下载 {0}…</value></data>
+  <data name="Status_Reusing" xml:space="preserve"><value>正在复用本地未变化的文件…</value></data>
+  <data name="Status_Installing" xml:space="preserve"><value>正在安装 {0}…</value></data>
+  <data name="Status_Installed" xml:space="preserve"><value>{0} 安装完成</value></data>
+  <data name="Status_AlreadyRunning" xml:space="preserve"><value>{0} 已在运行</value></data>
+  <data name="Status_Launching" xml:space="preserve"><value>正在启动 {0}…</value></data>
+  <data name="Status_Launched" xml:space="preserve"><value>已启动 {0}</value></data>
+  <data name="Status_LaunchFailedRollback" xml:space="preserve"><value>{0} 未能正常启动。可以在「上一版本」处点「恢复」回到旧版。</value></data>
+  <data name="Status_LaunchFailed" xml:space="preserve"><value>{0} 未能正常启动，请查看日志或重新安装。</value></data>
+  <data name="Status_LaunchTimedOut" xml:space="preserve"><value>{0} 已启动，但未在 {1} 分钟内报告就绪。</value></data>
+  <data name="Status_LaunchTimedOutRollback" xml:space="preserve"><value>如果游戏异常，可恢复上一版本。</value></data>
+  <data name="Status_LaunchError" xml:space="preserve"><value>启动失败：{0}</value></data>
+  <data name="Status_RollingBack" xml:space="preserve"><value>正在恢复上一版本…</value></data>
+  <data name="Status_RolledBack" xml:space="preserve"><value>已恢复到 {0}</value></data>
+  <data name="Status_TimedOut" xml:space="preserve"><value>连接超时，可稍后重试</value></data>
+  <data name="Status_Paused" xml:space="preserve"><value>已暂停，再次点击可继续下载</value></data>
+  <data name="Status_Cancelled" xml:space="preserve"><value>已取消</value></data>
+  <data name="Status_ChannelEmpty" xml:space="preserve"><value>{0}暂时没有发布版本，可以换个更新频道试试</value></data>
+  <data name="Status_Error" xml:space="preserve"><value>出错了：{0}</value></data>
+  <data name="Status_OfflineHint" xml:space="preserve"><value>仍可启动已安装的 {0}。</value></data>
+  <data name="Error_Detail" xml:space="preserve"><value>{0}（{1}）</value></data>
+  <data name="Error_Network" xml:space="preserve"><value>无法连接更新服务器</value></data>
+  <data name="Error_Timeout" xml:space="preserve"><value>网络超时，已下载的部分会保留，可继续下载</value></data>
+  <data name="Error_RateLimited" xml:space="preserve"><value>更新服务器繁忙，请稍后重试</value></data>
+  <data name="Error_PackageNotFound" xml:space="preserve"><value>服务器上缺少该版本的文件</value></data>
+  <data name="Error_SignatureInvalid" xml:space="preserve"><value>更新清单签名无效，已拒绝</value></data>
+  <data name="Error_ManifestNotFound" xml:space="preserve"><value>服务器上暂无该游戏的发布版本</value></data>
+  <data name="Error_ManifestInvalid" xml:space="preserve"><value>更新清单无效</value></data>
+  <data name="Error_LauncherTooOld" xml:space="preserve"><value>需要先更新 RhythmHub</value></data>
+  <data name="Error_InsufficientDiskSpace" xml:space="preserve"><value>磁盘空间不足</value></data>
+  <data name="Error_DownloadIncomplete" xml:space="preserve"><value>下载不完整，请重试</value></data>
+  <data name="Error_HashMismatch" xml:space="preserve"><value>文件校验失败，请重试</value></data>
+  <data name="Error_InvalidPackage" xml:space="preserve"><value>安装包无效</value></data>
+  <data name="Error_GameRunning" xml:space="preserve"><value>请先关闭游戏再更新</value></data>
+  <data name="Error_NoRollbackTarget" xml:space="preserve"><value>没有可恢复的上一版本</value></data>
+  <data name="Error_UpdateFailed" xml:space="preserve"><value>更新失败</value></data>
+</root>
