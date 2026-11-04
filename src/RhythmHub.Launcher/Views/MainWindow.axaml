@@ -31,7 +31,11 @@
 
         <StackPanel DockPanel.Dock="Bottom" Margin="10,10,10,0" Spacing="4">
           <DockPanel>
-            <TextBlock Text="{l:Tr Language}" Classes="secondary" FontSize="12" VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+              <PathIcon Data="{StaticResource TranslateIcon}" Width="16" Height="16"
+                        Foreground="{DynamicResource SecondaryLabelBrush}" />
+              <TextBlock Text="{l:Tr Language}" Classes="secondary" FontSize="12" VerticalAlignment="Center" />
+            </StackPanel>
             <ComboBox HorizontalAlignment="Right" FontSize="12" MinHeight="28" Padding="10,2"
                       ItemsSource="{Binding Languages}" SelectedItem="{Binding SelectedLanguage}">
               <ComboBox.ItemTemplate>
