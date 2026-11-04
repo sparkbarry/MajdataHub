@@ -71,6 +71,6 @@ For local end-to-end runs see the README ("本地模拟 S3"); the launcher honou
 
 - Code comments, identifiers and commit messages in English (Conventional Commits: `feat:`, `fix:`, `ci:`, `docs:`, `chore:`).
 - Launcher UI strings live in src/RhythmHub.Launcher/Resources/Strings.resx (English, neutral) with Strings.zh.resx and
-  Strings.ja.resx; add every new string to all three. Game descriptions are translated in games.json. The docs are in Chinese.
+  Strings.ja.resx; add every new string to all three. Game descriptions live in games.json as one `description` object keyed by language (`en` is the fallback). The docs are in Chinese.
 - site/ keeps one hand-written page per language; change all three together. Screenshots per language are in site/images/{zh,en,ja}/.
 - Match the surrounding code: small sealed classes, records for data, `UpdateException` with an `UpdateErrorCode` for expected failures.

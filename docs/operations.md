@@ -336,8 +336,15 @@ gh secret set RHYTHMHUB_SIGNING_KEY --repo SomeOrg/NewGame < ~/.rhythmhub/rhythm
 1. 在 [games.json](../src/RhythmHub.Launcher/games.json) 加一项：
 
    ```json
-   { "id": "NewGame", "displayName": "NewGame", "description": "……", "healthCheck": false }
+   {
+     "id": "NewGame",
+     "displayName": "NewGame",
+     "description": { "en": "……", "zh": "……", "ja": "……" },
+     "healthCheck": false
+   }
    ```
+
+   `description` 按界面语言取值，缺少当前语言时用 `en`。
 
    接入启动健康标记后（见下一步），把 `healthCheck` 改为 `true`。
 
