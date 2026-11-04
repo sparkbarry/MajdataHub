@@ -1,4 +1,9 @@
-# RhythmHub
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="design/logo/lockup-dark.png">
+    <img src="design/logo/lockup-light.png" alt="RhythmHub" width="340">
+  </picture>
+</h1>
 
 Windows / macOS 桌面启动器，负责节奏游戏（MajdataPlay、OurTaikoPlay 等 Unity 游戏）的安装、更新、校验、启动与回滚。
 游戏本体在各自仓库中构建；本仓库包含启动器、发布工具和发布流水线。

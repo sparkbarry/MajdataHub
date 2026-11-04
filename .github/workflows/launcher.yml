@@ -137,9 +137,9 @@ jobs:
           args=(-u RhythmHub -v "${{ steps.version.outputs.version }}" -p publish -o Releases -r ${{ matrix.rid }}
                 --channel ${{ matrix.channel }} --packTitle RhythmHub --packAuthors SparkBarry)
           if [[ "${{ matrix.platform }}" == Windows ]]; then
-            args+=(-e RhythmHub.Launcher.exe)
+            args+=(-e RhythmHub.Launcher.exe --icon src/RhythmHub.Launcher/Assets/RhythmHub.ico)
           else
-            args+=(-e RhythmHub.Launcher --bundleId com.sparkbarry.rhythmhub
+            args+=(-e RhythmHub.Launcher --bundleId com.sparkbarry.rhythmhub --icon build/macos/RhythmHub.icns
                    --signEntitlements build/macos/RhythmHub.entitlements)
             if [[ -n "$KEYCHAIN" ]]; then
               args+=(--keychain "$KEYCHAIN" --signAppIdentity "$APP_IDENTITY"

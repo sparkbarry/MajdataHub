@@ -51,7 +51,8 @@ nav {
   border-bottom: 1px solid color-mix(in srgb, var(--separator) 50%, transparent);
 }
 nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 48px; gap: 16px; }
-nav .brand { font-weight: 600; font-size: 19px; color: var(--label); }
+nav .brand { font-weight: 600; font-size: 19px; color: var(--label); display: inline-flex; align-items: center; gap: 8px; }
+nav .brand img { display: block; }
 nav .brand:hover { text-decoration: none; }
 nav .links { display: flex; align-items: center; gap: 22px; font-size: 13px; }
 nav .links a { color: var(--label); opacity: 0.8; }

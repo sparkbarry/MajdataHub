@@ -26,7 +26,8 @@ tools/RhythmHub.ReleaseTool/     rhythmhub-release: stage, publish, keygen, fake
 tools/ci/go-live.sh              makes a signed release live on a channel (shared by CI paths)
 tools/ci/launcher-upload.sh      uploads the launcher's Velopack output to its self-update feed
 .github/workflows/launcher.yml   launcher test + vpk pack; v1.x+ tags publish (docs/operations.md §8)
-build/macos/                     launcher entitlements for hardened-runtime signing
+build/macos/                     launcher entitlements and app icon (RhythmHub.icns)
+design/logo/                     logo sources (SVG); export.sh regenerates the .icns, .ico and site favicons
 .github/workflows/release-tool.yml  prebuilt single-file rhythmhub-release → "release-tool" GitHub release
 tools/fake-game/main.c           native stand-in player for pipeline tests
 .github/actions/upload-build/    composite action the game repositories call
