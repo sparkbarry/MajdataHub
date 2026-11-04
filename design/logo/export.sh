@@ -39,4 +39,11 @@ perl -0pe 's/<path d="M924[^"]*"([^>]*?)stroke="#000000" stroke-width="2"\/>/<re
   | sed 's/scale(.92)/scale(1.05)/' > "$tmp/touch.svg"
 render "$tmp/touch.svg" "$root/site/apple-touch-icon.png" 180
 
-echo "Exported icns, ico, favicon and apple-touch-icon."
+# README lockup (icon + wordmark), light and dark text, at 2x.
+for t in light dark; do
+  "$chrome" --headless=new --disable-gpu --hide-scrollbars --default-background-color=00000000 \
+    --force-device-scale-factor=2 --window-size=900,200 --screenshot="$tmp/lockup.png" "file://$here/lockup.html#$t" >/dev/null 2>&1
+  magick "$tmp/lockup.png" -trim +repage -bordercolor none -border 16 "$here/lockup-$t.png"
+done
+
+echo "Exported icns, ico, favicon, apple-touch-icon and the README lockup."
