@@ -1,43 +1,73 @@
-using System.Globalization;
+using System.ComponentModel;
 using System.Text.Json;
 using RhythmHub.Launcher.Resources;
 
 namespace RhythmHub.Launcher.Services;
 
-/// <summary>A release channel the player can pick for a game.</summary>
-/// <param name="ShortLabel">The label in the segmented channel switch.</param>
-public sealed record ChannelOption(string Id, string Label, string ShortLabel)
+/// <summary>A release channel the player can pick for a game; its labels follow the UI language.</summary>
+public sealed class ChannelOption : INotifyPropertyChanged
 {
     public static readonly IReadOnlyList<ChannelOption> All =
     [
-        new("stable", Strings.Channel_Stable, Strings.Channel_Stable),
-        new("nightly", Strings.Channel_Nightly, Strings.Channel_NightlyShort),
+        new("stable", nameof(Strings.Channel_Stable), nameof(Strings.Channel_Stable)),
+        new("nightly", nameof(Strings.Channel_Nightly), nameof(Strings.Channel_NightlyShort)),
     ];
+
+    private readonly string _labelKey;
+    private readonly string _shortLabelKey;
+
+    private ChannelOption(string id, string labelKey, string shortLabelKey)
+    {
+        Id = id;
+        _labelKey = labelKey;
+        _shortLabelKey = shortLabelKey;
+        // The options live as long as the app, so the handler never needs removing.
+        Localizer.Instance.LanguageChanged += (_, _) =>
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Label)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShortLabel)));
+        };
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public string Id { get; }
+    public string Label => Localizer.Instance[_labelKey];
+
+    /// <summary>The label in the segmented channel switch.</summary>
+    public string ShortLabel => Localizer.Instance[_shortLabelKey];
 
     public static ChannelOption Find(string id) => All.FirstOrDefault(c => c.Id == id) ?? All[0];
 }
 
 /// <summary>A UI language the player can pick; an empty id follows the system.</summary>
-public sealed record LanguageOption(string Id, string Label)
+public sealed class LanguageOption : INotifyPropertyChanged
 {
     public static readonly IReadOnlyList<LanguageOption> All =
     [
-        new("", Strings.Language_System),
+        new("", null),
         new("zh", "中文"),
         new("en", "English"),
         new("ja", "日本語"),
     ];
 
-    public static LanguageOption Find(string? id) => All.FirstOrDefault(l => l.Id == id) ?? All[0];
+    /// <summary>The language's own name; null for the system entry, whose label is translated.</summary>
+    private readonly string? _nativeName;
 
-    /// <summary>Switches resource lookups to <paramref name="id"/>; must run before any window is built.</summary>
-    public static void Apply(string? id)
+    private LanguageOption(string id, string? nativeName)
     {
-        if (string.IsNullOrEmpty(id) || Find(id).Id != id) return;
-        var culture = CultureInfo.GetCultureInfo(id);
-        CultureInfo.DefaultThreadCurrentUICulture = culture;
-        CultureInfo.CurrentUICulture = culture;
+        Id = id;
+        _nativeName = nativeName;
+        if (nativeName is null)
+            Localizer.Instance.LanguageChanged += (_, _) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Label)));
     }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public string Id { get; }
+    public string Label => _nativeName ?? Localizer.Instance[nameof(Strings.Language_System)];
+
+    public static LanguageOption Find(string? id) => All.FirstOrDefault(l => l.Id == id) ?? All[0];
 }
 
 /// <summary>Per-user launcher preferences in {installRoot}/settings.json; survives launcher updates.</summary>

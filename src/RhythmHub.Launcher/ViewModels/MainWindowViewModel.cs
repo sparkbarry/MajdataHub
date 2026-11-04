@@ -17,29 +17,23 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Games = new ObservableCollection<GameViewModel>(
             context.Config.Games.Select(g => new GameViewModel(g, context)));
         selectedGame = Games.FirstOrDefault();
-        _startupLanguage = LanguageOption.Find(context.Settings.Language);
-        selectedLanguage = _startupLanguage;
+        selectedLanguage = LanguageOption.Find(context.Settings.Language);
+        Localizer.Instance.LanguageChanged += (_, _) => OnLanguageChanged();
     }
-
-    private readonly LanguageOption _startupLanguage;
 
     public IReadOnlyList<LanguageOption> Languages => LanguageOption.All;
 
     [ObservableProperty]
     private LanguageOption selectedLanguage;
 
-    /// <summary>Strings are loaded once at startup, so a new language shows after a restart.</summary>
-    [ObservableProperty]
-    private bool languageChanged;
-
     partial void OnSelectedLanguageChanged(LanguageOption value)
     {
         // The combo box can briefly clear and restore its selection while binding; only a real change counts.
         if (value is null || value.Id == (_context.Settings.Language ?? "")) return;
+        Localizer.Instance.SetLanguage(value.Id);
         try
         {
             _context.Settings.SetLanguage(value.Id);
-            LanguageChanged = value != _startupLanguage;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -56,15 +50,22 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     /// <summary>Version of a downloaded launcher update waiting for a restart; null when there is none.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasLauncherUpdate))]
+    [NotifyPropertyChangedFor(nameof(HasLauncherUpdate), nameof(LauncherUpdateTitle))]
     private string? launcherUpdateVersion;
 
     public bool HasLauncherUpdate => LauncherUpdateVersion is not null;
 
-    [ObservableProperty]
-    private string launcherUpdateText = "";
+    public string LauncherUpdateTitle => string.Format(Strings.Launcher_UpdateAvailable, LauncherUpdateVersion);
 
-    partial void OnLauncherUpdateVersionChanged(string? value) => LauncherUpdateText = Strings.Launcher_UpdateReady;
+    private bool _waitingForGames;
+
+    public string LauncherUpdateText => _waitingForGames ? Strings.Launcher_WaitForGames : Strings.Launcher_UpdateReady;
+
+    private void OnLanguageChanged()
+    {
+        OnPropertyChanged(nameof(LauncherUpdateTitle));
+        OnPropertyChanged(nameof(LauncherUpdateText));
+    }
 
     public async Task InitializeAsync()
     {
@@ -92,7 +93,8 @@ public sealed partial class MainWindowViewModel : ObservableObject
         // Restarting would abort a download or install in progress; the game itself keeps running.
         if (Games.Any(g => g.IsBusy))
         {
-            LauncherUpdateText = Strings.Launcher_WaitForGames;
+            _waitingForGames = true;
+            OnPropertyChanged(nameof(LauncherUpdateText));
             return;
         }
         _context.SelfUpdate.ApplyAndRestart();

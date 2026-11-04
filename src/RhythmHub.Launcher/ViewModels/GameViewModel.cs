@@ -45,18 +45,29 @@ public sealed partial class GameViewModel : ObservableObject
         _entry = entry;
         Id = entry.Id;
         DisplayName = entry.DisplayName;
-        Description = entry.LocalizedDescription;
         Accent = Brush.Parse(entry.Color ?? "#0071E3");
         Icon = LoadIcon(entry.Icon);
         _updater = new GameUpdateService(entry.Id, context.Options, context.Http, context.Platform, context.Loggers);
         _logger = context.Loggers.CreateLogger($"Game.{entry.Id}");
         selectedChannel = ChannelOption.Find(context.Settings.GetChannel(entry.Id, context.Options.Channel));
         _updater.Channel = selectedChannel.Id;
+        Localizer.Instance.LanguageChanged += (_, _) => OnLanguageChanged();
+    }
+
+    /// <summary>Re-reads every string shown, so a language switch needs no restart.</summary>
+    private void OnLanguageChanged()
+    {
+        foreach (var name in new[]
+                 {
+                     nameof(Description), nameof(RevealFolderText), nameof(InstalledVersionShort), nameof(SidebarText),
+                     nameof(PrimaryText), nameof(ShowCheckButton), nameof(StatusText),
+                 })
+            OnPropertyChanged(name);
     }
 
     public string Id { get; }
     public string DisplayName { get; }
-    public string Description { get; }
+    public string Description => _entry.LocalizedDescription;
     public string Initial => DisplayName[..1];
     public IBrush Accent { get; }
 
@@ -91,8 +102,10 @@ public sealed partial class GameViewModel : ObservableObject
     /// <summary>Switching mid-download would orphan the transfer, and mid-game the install would be refused.</summary>
     public bool CanChangeChannel => !IsBusy && State != GameState.Running;
 
-    [ObservableProperty]
-    private string statusText = "";
+    /// <summary>Builds the status line; kept instead of the text so it can be rebuilt in a new language.</summary>
+    private Func<string> _status = () => "";
+
+    public string StatusText => _status();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(InstalledVersionShort), nameof(PrimaryText), nameof(SidebarText),
@@ -199,25 +212,27 @@ public sealed partial class GameViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanCheck))]
     private async Task CheckAsync()
     {
-        await RunAsync(GameState.Checking, Strings.Status_Checking, CheckTimeout, async ct =>
+        await RunAsync(GameState.Checking, () => Strings.Status_Checking, CheckTimeout, async ct =>
         {
-            _available = await _updater.CheckAsync(ct);
-            RemoteVersion = _available?.Version ?? Installed?.Version;
-            if (_available is null)
+            var available = _available = await _updater.CheckAsync(ct);
+            var installed = Installed?.Version;
+            RemoteVersion = available?.Version ?? installed;
+            if (available is null)
             {
-                SetState(GameState.Ready, string.Format(Strings.Status_UpToDate, Installed?.Version));
+                SetState(GameState.Ready, () => string.Format(Strings.Status_UpToDate, installed));
                 return;
             }
-            var resumable = await _updater.GetResumableBytesAsync(_available, ct);
-            var download = _available.DownloadBytes;
-            var size = resumable > 0
+            var resumable = await _updater.GetResumableBytesAsync(available, ct);
+            var download = available.DownloadBytes;
+            var channel = SelectedChannel;
+            string Size() => resumable > 0
                 ? string.Format(Strings.Size_Resumable, FormatSize(resumable))
-                : Installed is not null && download < _available.InstalledSizeBytes
-                    ? string.Format(Strings.Size_Delta, FormatSize(download), FormatSize(_available.InstalledSizeBytes))
+                : installed is not null && download < available.InstalledSizeBytes
+                    ? string.Format(Strings.Size_Delta, FormatSize(download), FormatSize(available.InstalledSizeBytes))
                     : FormatSize(download);
-            SetState(GameState.UpdateAvailable, Installed is null
-                ? string.Format(Strings.Status_CanInstall, _available.Version, size)
-                : string.Format(Strings.Status_ChannelLatest, SelectedChannel.Label, _available.Version, size));
+            SetState(GameState.UpdateAvailable, installed is null
+                ? () => string.Format(Strings.Status_CanInstall, available.Version, Size())
+                : () => string.Format(Strings.Status_ChannelLatest, channel.Label, available.Version, Size()));
         });
     }
 
@@ -225,7 +240,7 @@ public sealed partial class GameViewModel : ObservableObject
 
     private async Task UpdateAsync(GameRelease release)
     {
-        await RunAsync(GameState.Downloading, string.Format(Strings.Status_Downloading, release.Version), null, async ct =>
+        await RunAsync(GameState.Downloading, () => string.Format(Strings.Status_Downloading, release.Version), null, async ct =>
         {
             var meter = new SpeedMeter();
             var stage = DownloadStage.Downloading;
@@ -235,9 +250,9 @@ public sealed partial class GameViewModel : ObservableObject
                 {
                     stage = p.Stage;
                     meter = new SpeedMeter();
-                    StatusText = stage == DownloadStage.ReusingLocalFiles
-                        ? Strings.Status_Reusing
-                        : string.Format(Strings.Status_Downloading, release.Version);
+                    SetStatus(stage == DownloadStage.ReusingLocalFiles
+                        ? () => Strings.Status_Reusing
+                        : () => string.Format(Strings.Status_Downloading, release.Version));
                 }
                 ProgressValue = p.TotalBytes == 0 ? 0 : 100.0 * p.CompletedBytes / p.TotalBytes;
                 ProgressText = stage == DownloadStage.ReusingLocalFiles
@@ -246,14 +261,14 @@ public sealed partial class GameViewModel : ObservableObject
             });
             await _updater.DownloadAsync(release, progress, ct);
 
-            SetState(GameState.Installing, string.Format(Strings.Status_Installing, release.Version));
+            SetState(GameState.Installing, () => string.Format(Strings.Status_Installing, release.Version));
             IsProgressIndeterminate = true;
             ProgressText = "";
             await _updater.InstallAsync(release, ct);
 
             _available = null;
             await RefreshInstalledAsync();
-            SetState(GameState.Ready, string.Format(Strings.Status_Installed, release.Version));
+            SetState(GameState.Ready, () => string.Format(Strings.Status_Installed, release.Version));
         });
     }
 
@@ -264,13 +279,13 @@ public sealed partial class GameViewModel : ObservableObject
         {
             if (await _context.Platform.IsGameRunningAsync(game.VersionDirectory, game.Entrypoint, CancellationToken.None))
             {
-                StatusText = string.Format(Strings.Status_AlreadyRunning, DisplayName);
+                SetStatus(() => string.Format(Strings.Status_AlreadyRunning, DisplayName));
                 return;
             }
             var ticket = _updater.Health.Prepare(game);
             _logger.LogInformation("Launching {Version} from {Dir}", game.Version, game.VersionDirectory);
             await _context.Platform.LaunchGameAsync(game.VersionDirectory, game.Entrypoint, ticket.Environment, CancellationToken.None);
-            SetState(GameState.Running, string.Format(Strings.Status_Launching, game.Version));
+            SetState(GameState.Running, () => string.Format(Strings.Status_Launching, game.Version));
 
             var outcome = await _updater.Health.WaitAsync(ticket, _entry.HealthCheck,
                 ct => _context.Platform.IsGameRunningAsync(game.VersionDirectory, game.Entrypoint, ct),
@@ -281,23 +296,24 @@ public sealed partial class GameViewModel : ObservableObject
             switch (outcome)
             {
                 case LaunchOutcome.Healthy:
-                    SetState(GameState.Ready, string.Format(Strings.Status_Launched, game.Version));
+                    SetState(GameState.Ready, () => string.Format(Strings.Status_Launched, game.Version));
                     break;
                 case LaunchOutcome.Exited:
                     SetState(GameState.Failed, CanRollback
-                        ? string.Format(Strings.Status_LaunchFailedRollback, game.Version)
-                        : string.Format(Strings.Status_LaunchFailed, game.Version));
+                        ? () => string.Format(Strings.Status_LaunchFailedRollback, game.Version)
+                        : () => string.Format(Strings.Status_LaunchFailed, game.Version));
                     break;
                 case LaunchOutcome.TimedOut:
-                    SetState(GameState.Ready, string.Format(Strings.Status_LaunchTimedOut, game.Version, HealthTimeout.TotalMinutes.ToString("0")) +
-                        (CanRollback ? Strings.Status_LaunchTimedOutRollback : ""));
+                    var canRollback = CanRollback;
+                    SetState(GameState.Ready, () => string.Format(Strings.Status_LaunchTimedOut, game.Version, HealthTimeout.TotalMinutes.ToString("0")) +
+                        (canRollback ? Strings.Status_LaunchTimedOutRollback : ""));
                     break;
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Launch failed");
-            SetState(GameState.Failed, string.Format(Strings.Status_LaunchError, ex.Message));
+            SetState(GameState.Failed, () => string.Format(Strings.Status_LaunchError, ex.Message));
         }
     }
 
@@ -311,11 +327,12 @@ public sealed partial class GameViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanRollbackNow))]
     private async Task RollbackAsync()
     {
-        await RunAsync(GameState.Installing, Strings.Status_RollingBack, null, async ct =>
+        await RunAsync(GameState.Installing, () => Strings.Status_RollingBack, null, async ct =>
         {
             await _updater.RollbackAsync(ct);
             await RefreshInstalledAsync();
-            SetState(GameState.Ready, string.Format(Strings.Status_RolledBack, Installed?.Version));
+            var version = Installed?.Version;
+            SetState(GameState.Ready, () => string.Format(Strings.Status_RolledBack, version));
         });
     }
 
@@ -336,7 +353,7 @@ public sealed partial class GameViewModel : ObservableObject
     }
 
     /// <summary>Runs one state-machine step; failures keep whatever version is installed playable.</summary>
-    private async Task RunAsync(GameState busyState, string message, TimeSpan? timeout, Func<CancellationToken, Task> body)
+    private async Task RunAsync(GameState busyState, Func<string> message, TimeSpan? timeout, Func<CancellationToken, Task> body)
     {
         using var cts = timeout is { } t ? new CancellationTokenSource(t) : new CancellationTokenSource();
         _operation = cts;
@@ -352,21 +369,26 @@ public sealed partial class GameViewModel : ObservableObject
         catch (OperationCanceledException) when (cts.IsCancellationRequested)
         {
             var timedOut = !_userCancelled && timeout is not null;
+            var paused = _available is not null;
+            var hint = OfflineHint();
             _logger.LogWarning("{Step} cancelled", busyState);
-            SetState(_available is not null ? GameState.UpdateAvailable : Installed is null ? GameState.Failed : GameState.Ready,
-                (timedOut ? Strings.Status_TimedOut : _available is not null ? Strings.Status_Paused : Strings.Status_Cancelled) + OfflineHint());
+            SetState(paused ? GameState.UpdateAvailable : Installed is null ? GameState.Failed : GameState.Ready,
+                () => (timedOut ? Strings.Status_TimedOut : paused ? Strings.Status_Paused : Strings.Status_Cancelled) + hint());
         }
         catch (UpdateException ex)
         {
             _logger.LogError(ex, "{Step} failed with {Code}", busyState, ex.Code);
-            SetState(GameState.Failed, (ex.Code == UpdateErrorCode.ManifestNotFound
-                ? string.Format(Strings.Status_ChannelEmpty, SelectedChannel.Label)
-                : Describe(ex)) + OfflineHint());
+            var channel = SelectedChannel;
+            var hint = OfflineHint();
+            SetState(GameState.Failed, () => (ex.Code == UpdateErrorCode.ManifestNotFound
+                ? string.Format(Strings.Status_ChannelEmpty, channel.Label)
+                : Describe(ex)) + hint());
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "{Step} failed unexpectedly", busyState);
-            SetState(GameState.Failed, string.Format(Strings.Status_Error, ex.Message) + OfflineHint());
+            var hint = OfflineHint();
+            SetState(GameState.Failed, () => string.Format(Strings.Status_Error, ex.Message) + hint());
         }
         finally
         {
@@ -375,12 +397,23 @@ public sealed partial class GameViewModel : ObservableObject
         }
     }
 
-    private string OfflineHint() => Installed is null ? "" : "\n" + string.Format(Strings.Status_OfflineHint, Installed.Version);
+    /// <summary>The hint for the version installed now, rendered in whatever language is current.</summary>
+    private Func<string> OfflineHint()
+    {
+        var version = Installed?.Version;
+        return () => version is null ? "" : "\n" + string.Format(Strings.Status_OfflineHint, version);
+    }
 
-    private void SetState(GameState next, string message)
+    private void SetState(GameState next, Func<string> message)
     {
         State = next;
-        StatusText = message;
+        SetStatus(message);
+    }
+
+    private void SetStatus(Func<string> message)
+    {
+        _status = message;
+        OnPropertyChanged(nameof(StatusText));
     }
 
     private static string Describe(UpdateException ex) => string.Format(Strings.Error_Detail, ex.Code switch

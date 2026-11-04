@@ -8,7 +8,6 @@
   <data name="Logs" xml:space="preserve"><value>日志</value></data>
   <data name="Language" xml:space="preserve"><value>语言</value></data>
   <data name="Language_System" xml:space="preserve"><value>跟随系统</value></data>
-  <data name="Language_RestartHint" xml:space="preserve"><value>重启 RhythmHub 后生效</value></data>
   <data name="Launcher_UpdateAvailable" xml:space="preserve"><value>启动器有新版本 {0}</value></data>
   <data name="Launcher_UpdateReady" xml:space="preserve"><value>已下载，重启后生效</value></data>
   <data name="Launcher_RestartToUpdate" xml:space="preserve"><value>重启更新</value></data>

@@ -8,7 +8,6 @@
   <data name="Logs" xml:space="preserve"><value>ログ</value></data>
   <data name="Language" xml:space="preserve"><value>言語</value></data>
   <data name="Language_System" xml:space="preserve"><value>システム</value></data>
-  <data name="Language_RestartHint" xml:space="preserve"><value>RhythmHub を再起動すると適用されます</value></data>
   <data name="Launcher_UpdateAvailable" xml:space="preserve"><value>RhythmHub {0} があります</value></data>
   <data name="Launcher_UpdateReady" xml:space="preserve"><value>ダウンロード済み。再起動後に適用されます</value></data>
   <data name="Launcher_RestartToUpdate" xml:space="preserve"><value>再起動して更新</value></data>

@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 
 namespace RhythmHub.Launcher.Services;
@@ -15,7 +14,7 @@ public sealed record GameEntry(
 
     /// <summary>The description in the current UI language, falling back to English.</summary>
     public string LocalizedDescription =>
-        Description?.GetValueOrDefault(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName)
+        Description?.GetValueOrDefault(Localizer.Instance.Culture.TwoLetterISOLanguageName)
         ?? Description?.GetValueOrDefault(FallbackLanguage)
         ?? "";
 }
